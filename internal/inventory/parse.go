@@ -17,6 +17,7 @@ type Inventory struct {
 	owned      map[string]int
 	parts      map[string]int // loose-signature part counts (for recipe matching)
 	masteryXP  map[string]int // lifetime affinity per item type (mastery source)
+	relics     map[string]int // owned void relics, by internal ItemType -> count
 	categories []Category
 }
 
@@ -41,9 +42,17 @@ func Parse(raw []byte) (*Inventory, error) {
 	if err := json.Unmarshal(raw, &j); err != nil {
 		return nil, err
 	}
-	inv := &Inventory{owned: make(map[string]int), parts: make(map[string]int)}
+	inv := &Inventory{owned: make(map[string]int), parts: make(map[string]int), relics: make(map[string]int)}
 	add := func(entries []invEntry) {
 		for _, e := range entries {
+			// Void relics live in MiscItems too, keyed by their projection type
+			// (e.g. ".../Projections/T1VoidProjectionDBronze"). Record them by
+			// internal type so they can be matched to drop tables; they are not
+			// "Prime" parts, so handle them before the Prime-only filter below.
+			if strings.Contains(e.ItemType, "VoidProjection") {
+				inv.relics[e.ItemType] += e.ItemCount
+				continue
+			}
 			if !strings.Contains(e.ItemType, "Prime") {
 				continue
 			}
@@ -90,6 +99,17 @@ func (inv *Inventory) MasteryXP(uniqueName string) int {
 		return 0
 	}
 	return inv.masteryXP[uniqueName]
+}
+
+// Relics returns the player's owned void relics keyed by internal item type
+// (e.g. "/Lotus/Types/Game/Projections/T1VoidProjectionDBronze") with how many of
+// each are held. The key matches the "uniqueName" in the relic drop tables, so a
+// refined relic (…Silver/Gold/Platinum) maps to its refined drop chances.
+func (inv *Inventory) Relics() map[string]int {
+	if inv == nil {
+		return nil
+	}
+	return inv.relics
 }
 
 // Categories returns the owned equipment grouped by kind (Warframes, Primary, …).

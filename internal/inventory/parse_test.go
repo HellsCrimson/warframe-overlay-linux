@@ -53,3 +53,31 @@ func TestParseAndOwned(t *testing.T) {
 		t.Errorf("unowned item = %d, want 0", got)
 	}
 }
+
+func TestParseRelics(t *testing.T) {
+	raw := []byte(`{
+		"MiscItems": [
+			{"ItemType":"/Lotus/Types/Game/Projections/T1VoidProjectionDBronze","ItemCount":6},
+			{"ItemType":"/Lotus/Types/Game/Projections/T3VoidProjectionMGold","ItemCount":2},
+			{"ItemType":"/Lotus/Types/Recipes/Weapons/WeaponParts/BroncoPrimeReceiver","ItemCount":1}
+		]
+	}`)
+	inv, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rl := inv.Relics()
+	if len(rl) != 2 {
+		t.Fatalf("relic types = %d, want 2", len(rl))
+	}
+	if got := rl["/Lotus/Types/Game/Projections/T1VoidProjectionDBronze"]; got != 6 {
+		t.Errorf("Lith D1 Intact count = %d, want 6", got)
+	}
+	if got := rl["/Lotus/Types/Game/Projections/T3VoidProjectionMGold"]; got != 2 {
+		t.Errorf("Neo M Radiant count = %d, want 2", got)
+	}
+	// Relics must not leak into the prime-part counts, and parts not into relics.
+	if got := inv.Owned("Bronco Prime Receiver"); got != 1 {
+		t.Errorf("Bronco Prime Receiver owned = %d, want 1", got)
+	}
+}

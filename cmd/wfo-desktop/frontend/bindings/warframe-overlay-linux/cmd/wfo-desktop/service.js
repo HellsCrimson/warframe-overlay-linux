@@ -38,12 +38,28 @@ export function GetInventory() {
 }
 
 /**
- * GetMastery computes the best-to-do-next mastery view.
+ * GetMastery computes the mastery view, ordered by sortMode: "next" (best to do
+ * next, the default), "cost" (cheapest missing parts to buy first) or "relics"
+ * (most farmable from relics the player already owns first).
+ * @param {string} sortMode
  * @returns {$CancellablePromise<$models.MasteryView>}
  */
-export function GetMastery() {
-    return $Call.ByID(4196764460).then(/** @type {($result: any) => any} */(($result) => {
+export function GetMastery(sortMode) {
+    return $Call.ByID(4196764460, sortMode).then(/** @type {($result: any) => any} */(($result) => {
         return $$createType3($result);
+    }));
+}
+
+/**
+ * GetRelics lists the relics the player owns with each relic's drop table, the
+ * platinum/ducat value and ownership of every reward, and the expected platinum
+ * per crack. sortMode is "era" (default), "value" or "count".
+ * @param {string} sortMode
+ * @returns {$CancellablePromise<$models.RelicsView>}
+ */
+export function GetRelics(sortMode) {
+    return $Call.ByID(2917727547, sortMode).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType4($result);
     }));
 }
 
@@ -53,7 +69,7 @@ export function GetMastery() {
  */
 export function GetSellable() {
     return $Call.ByID(340323687).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType5($result);
+        return $$createType6($result);
     }));
 }
 
@@ -64,7 +80,7 @@ export function GetSellable() {
  */
 export function ListOnMarket(names) {
     return $Call.ByID(3721823692, names).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType6($result);
+        return $$createType7($result);
     }));
 }
 
@@ -75,7 +91,7 @@ export function ListOnMarket(names) {
  */
 export function LoadInventory() {
     return $Call.ByID(1450154683).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType7($result);
+        return $$createType8($result);
     }));
 }
 
@@ -87,7 +103,7 @@ export function LoadInventory() {
  */
 export function MarketLogin(email, password) {
     return $Call.ByID(996785430, email, password).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType8($result);
+        return $$createType9($result);
     }));
 }
 
@@ -103,7 +119,7 @@ export function MarketLogout() {
  */
 export function MarketStatus() {
     return $Call.ByID(1682935395).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType8($result);
+        return $$createType9($result);
     }));
 }
 
@@ -115,7 +131,7 @@ export function MarketStatus() {
  */
 export function PartSellers(query) {
     return $Call.ByID(1999966532, query).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType10($result);
+        return $$createType11($result);
     }));
 }
 
@@ -133,10 +149,11 @@ const $$createType0 = $models.Analytics.createFrom;
 const $$createType1 = $models.InvCategory.createFrom;
 const $$createType2 = $Create.Array($$createType1);
 const $$createType3 = $models.MasteryView.createFrom;
-const $$createType4 = $models.SellItem.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = $models.ListResult.createFrom;
-const $$createType7 = $models.LoadStatus.createFrom;
-const $$createType8 = $models.MarketStatus.createFrom;
-const $$createType9 = $models.MarketSeller.createFrom;
-const $$createType10 = $Create.Array($$createType9);
+const $$createType4 = $models.RelicsView.createFrom;
+const $$createType5 = $models.SellItem.createFrom;
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = $models.ListResult.createFrom;
+const $$createType8 = $models.LoadStatus.createFrom;
+const $$createType9 = $models.MarketStatus.createFrom;
+const $$createType10 = $models.MarketSeller.createFrom;
+const $$createType11 = $Create.Array($$createType10);

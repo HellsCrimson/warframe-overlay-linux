@@ -4,13 +4,15 @@ let { loaded, status } = $props();
 
 let view = $state(null);
 let hideNotStarted = $state(true);
+let sort = $state("next");       // next | cost | relics
 let selected = $state("");
 let selPart = $state("");        // query of the part whose sellers are shown
 let sellers = $state(null);      // seller rows, or null while loading
 let loadingSellers = $state(false);
 let copied = $state("");         // whisper just copied (for feedback)
 
-$effect(() => { if (loaded) Service.GetMastery().then((v) => (view = v)); });
+// Refetch when the sort mode changes (the backend does the ordering).
+$effect(() => { if (loaded) Service.GetMastery(sort).then((v) => (view = v)); });
 
 const statusColor = {
   "Built — rank up": "var(--gold)", "Ready to build": "var(--green)",
@@ -24,6 +26,16 @@ function detail(it) {
   if (it.status === "Built — rank up") return `rank ${it.rank} / ${it.maxRank}`;
   if (it.partsTotal > 0) return `${it.partsOwned} / ${it.partsTotal} parts`;
   return "";
+}
+
+// Sort-specific metric shown on each row (cost to finish / owned-relic odds).
+function costLabel(it) {
+  if (it.buildCost <= 0) return it.costKnown ? "free" : "no price";
+  return it.costKnown ? `${it.buildCost}p` : `${it.buildCost}p+`;
+}
+function relicLabel(it) {
+  if (!it.relicCount) return "no owned relics";
+  return `${it.relicCount} relics · ${it.bestChance.toFixed(1)}%`;
 }
 
 function pickItem(it) {
@@ -56,15 +68,30 @@ function copy(text) { navigator.clipboard.writeText(text); copied = text; }
     <span class="chip" style="color:var(--blue)">{view.summary.PartsPartial} collecting</span>
     <span class="chip muted">{view.summary.NotStarted} not started</span>
   </div>
-  <label class="muted" style="margin:6px 0; display:flex; gap:8px; align-items:center; cursor:pointer">
-    <input type="checkbox" bind:checked={hideNotStarted} /> Hide not-yet-started items
-  </label>
+  <div class="controls">
+    <label class="muted sortlabel">
+      Sort by
+      <select bind:value={sort}>
+        <option value="next">Best to do next</option>
+        <option value="cost">Cheapest to build</option>
+        <option value="relics">Farmable from my relics</option>
+      </select>
+    </label>
+    <label class="muted" style="display:flex; gap:8px; align-items:center; cursor:pointer">
+      <input type="checkbox" bind:checked={hideNotStarted} /> Hide not-yet-started items
+    </label>
+  </div>
   <div class="scroll">
     {#each items as it}
       <div class="row" class:active={it.name === selected}
            onclick={() => pickItem(it)} role="button" tabindex="0">
         {#if it.icon}<img class="thumb" src={it.icon} alt="" loading="lazy" />{:else}<div class="thumb ph"></div>{/if}
         <span class="iname">{it.name}</span>
+        {#if sort === "cost"}
+          <span class="metric" class:dim={!it.costKnown && it.buildCost <= 0}>{costLabel(it)}</span>
+        {:else if sort === "relics"}
+          <span class="metric" class:dim={!it.relicCount}>{relicLabel(it)}</span>
+        {/if}
         <span class="muted" style="margin-right:12px">{detail(it)}</span>
         <span class="badge" style="color:{statusColor[it.status] || '#888'}">{it.status}</span>
       </div>
@@ -106,6 +133,19 @@ function copy(text) { navigator.clipboard.writeText(text); copied = text; }
 {/if}
 
 <style>
+.controls {
+  display: flex; flex-wrap: wrap; gap: 18px; align-items: center; margin: 6px 0;
+}
+.sortlabel { display: flex; gap: 8px; align-items: center; }
+.sortlabel select {
+  font: inherit; color: var(--text); background: var(--panel2);
+  border: 1px solid var(--border, #333); border-radius: 8px; padding: 3px 8px; cursor: pointer;
+}
+.metric {
+  margin-right: 12px; font-size: 12px; font-weight: 600;
+  color: var(--gold); white-space: nowrap;
+}
+.metric.dim { color: #6a6d77; font-weight: 400; }
 .row { cursor: pointer; }
 .row.active { background: var(--panel2); }
 .parts {

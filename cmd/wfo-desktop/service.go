@@ -15,6 +15,7 @@ import (
 	"warframe-overlay-linux/internal/inventory"
 	"warframe-overlay-linux/internal/mastery"
 	"warframe-overlay-linux/internal/relicoverlay"
+	"warframe-overlay-linux/internal/relics"
 	"warframe-overlay-linux/internal/trades"
 	"warframe-overlay-linux/internal/wfdata"
 	"warframe-overlay-linux/internal/wfmarket"
@@ -39,6 +40,7 @@ type Service struct {
 	inv        *inventory.Inventory
 	names      *wfdata.DB
 	prices     *db.Database
+	relics     *relics.Tables
 	market     *wfmarket.Client
 	session    *wfmarket.Session
 	tradeStore *trades.Store
@@ -70,6 +72,14 @@ func NewService(opts serviceOptions) *Service {
 		if d, err := db.Load(db.Options{CacheDir: config.DefaultCacheDir(), TTL: 24 * time.Hour}); err == nil {
 			s.mu.Lock()
 			s.prices = d
+			s.mu.Unlock()
+		}
+	}()
+	// Relic drop tables (for the mastery "farmable from owned relics" ordering).
+	go func() {
+		if t, err := relics.Load(relics.Options{CacheDir: config.DefaultCacheDir()}); err == nil {
+			s.mu.Lock()
+			s.relics = t
 			s.mu.Unlock()
 		}
 	}()
@@ -228,6 +238,16 @@ type MasteryItem struct {
 	PartsTotal int           `json:"partsTotal"`
 	Parts      []MasteryPart `json:"parts"` // per-component detail (collecting items)
 	Icon       string        `json:"icon"`
+	// BuildCost is the platinum needed to buy the still-missing parts.
+	BuildCost int `json:"buildCost"`
+	// CostKnown is false when a needed part has no market price (BuildCost partial).
+	CostKnown bool `json:"costKnown"`
+	// RelicCount is how many owned relics can drop a still-needed part.
+	RelicCount int `json:"relicCount"`
+	// RelicScore weights drop chance by owned-relic count (the "farmable" rank key).
+	RelicScore float64 `json:"relicScore"`
+	// BestChance is the best single-relic drop chance (%) for a needed part.
+	BestChance float64 `json:"bestChance"`
 }
 
 type MasteryView struct {
@@ -235,29 +255,34 @@ type MasteryView struct {
 	Items   []MasteryItem  `json:"items"`
 }
 
-// GetMastery computes the best-to-do-next mastery view.
-func (s *Service) GetMastery() MasteryView {
+// GetMastery computes the mastery view, ordered by sortMode: "next" (best to do
+// next, the default), "cost" (cheapest missing parts to buy first) or "relics"
+// (most farmable from relics the player already owns first).
+func (s *Service) GetMastery(sortMode string) MasteryView {
 	s.mu.Lock()
-	inv, names := s.inv, s.names
+	inv, names, prices, tables := s.inv, s.names, s.prices, s.relics
 	s.mu.Unlock()
 	if inv == nil || names == nil {
 		return MasteryView{}
 	}
 	res := mastery.Compute(names.Masterable(), inv)
+	idx := buildRelicIndex(inv, tables)
 	view := MasteryView{Summary: MasterySummary(res.Summary)}
 	for _, it := range res.Items {
 		var parts []MasteryPart
 		for _, p := range it.Parts {
 			parts = append(parts, MasteryPart{Name: p.Name, Query: p.Query, Have: p.Have, Need: p.Need})
 		}
-		view.Items = append(view.Items, MasteryItem{
+		mi := MasteryItem{
 			Name: it.Name, Category: it.Category, Status: it.Status.String(),
 			Rank: it.Rank, MaxRank: it.MaxRank,
 			PartsOwned: it.PartsOwned, PartsTotal: it.PartsTotal,
 			Parts: parts,
 			Icon:  names.ImageURLByName(it.Name),
-		})
+		}
+		view.Items = append(view.Items, annotate(it, mi, prices, idx))
 	}
+	sortMastery(view.Items, sortMode)
 	return view
 }
 

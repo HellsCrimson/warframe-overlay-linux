@@ -456,6 +456,46 @@ export class MasteryItem {
              */
             this["icon"] = "";
         }
+        if (!("buildCost" in $$source)) {
+            /**
+             * BuildCost is the platinum needed to buy the still-missing parts.
+             * @member
+             * @type {number}
+             */
+            this["buildCost"] = 0;
+        }
+        if (!("costKnown" in $$source)) {
+            /**
+             * CostKnown is false when a needed part has no market price (BuildCost partial).
+             * @member
+             * @type {boolean}
+             */
+            this["costKnown"] = false;
+        }
+        if (!("relicCount" in $$source)) {
+            /**
+             * RelicCount is how many owned relics can drop a still-needed part.
+             * @member
+             * @type {number}
+             */
+            this["relicCount"] = 0;
+        }
+        if (!("relicScore" in $$source)) {
+            /**
+             * RelicScore weights drop chance by owned-relic count (the "farmable" rank key).
+             * @member
+             * @type {number}
+             */
+            this["relicScore"] = 0;
+        }
+        if (!("bestChance" in $$source)) {
+            /**
+             * BestChance is the best single-relic drop chance (%) for a needed part.
+             * @member
+             * @type {number}
+             */
+            this["bestChance"] = 0;
+        }
 
         Object.assign(this, $$source);
     }
@@ -635,6 +675,202 @@ export class MasteryView {
     }
 }
 
+/**
+ * RelicReward is one possible drop from a relic, valued and flagged with whether
+ * the player already owns it.
+ */
+export class RelicReward {
+    /**
+     * Creates a new RelicReward instance.
+     * @param {Partial<RelicReward>} [$$source = {}] - The source object to create the RelicReward.
+     */
+    constructor($$source = {}) {
+        if (!("part" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["part"] = "";
+        }
+        if (!("rarity" in $$source)) {
+            /**
+             * Common | Uncommon | Rare
+             * @member
+             * @type {string}
+             */
+            this["rarity"] = "";
+        }
+        if (!("chance" in $$source)) {
+            /**
+             * drop chance in percent
+             * @member
+             * @type {number}
+             */
+            this["chance"] = 0;
+        }
+        if (!("plat" in $$source)) {
+            /**
+             * warframe.market value of the part
+             * @member
+             * @type {number}
+             */
+            this["plat"] = 0;
+        }
+        if (!("ducats" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["ducats"] = 0;
+        }
+        if (!("owned" in $$source)) {
+            /**
+             * how many of this part the player already has
+             * @member
+             * @type {number}
+             */
+            this["owned"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RelicReward instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {RelicReward}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RelicReward(/** @type {Partial<RelicReward>} */($$parsedSource));
+    }
+}
+
+/**
+ * RelicRow is one owned relic variant with its drop table.
+ */
+export class RelicRow {
+    /**
+     * Creates a new RelicRow instance.
+     * @param {Partial<RelicRow>} [$$source = {}] - The source object to create the RelicRow.
+     */
+    constructor($$source = {}) {
+        if (!("name" in $$source)) {
+            /**
+             * "Lith D1"
+             * @member
+             * @type {string}
+             */
+            this["name"] = "";
+        }
+        if (!("era" in $$source)) {
+            /**
+             * Lith | Meso | Neo | Axi | Requiem
+             * @member
+             * @type {string}
+             */
+            this["era"] = "";
+        }
+        if (!("refinement" in $$source)) {
+            /**
+             * Intact | Exceptional | Flawless | Radiant
+             * @member
+             * @type {string}
+             */
+            this["refinement"] = "";
+        }
+        if (!("count" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["count"] = 0;
+        }
+        if (!("value" in $$source)) {
+            /**
+             * expected platinum per crack (Σ chance×plat)
+             * @member
+             * @type {number}
+             */
+            this["value"] = 0;
+        }
+        if (!("rewards" in $$source)) {
+            /**
+             * @member
+             * @type {RelicReward[]}
+             */
+            this["rewards"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RelicRow instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {RelicRow}
+     */
+    static createFrom($$source = {}) {
+        const $$createField5_0 = $$createType11;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("rewards" in $$parsedSource) {
+            $$parsedSource["rewards"] = $$createField5_0($$parsedSource["rewards"]);
+        }
+        return new RelicRow(/** @type {Partial<RelicRow>} */($$parsedSource));
+    }
+}
+
+/**
+ * RelicsView is the relics tab payload.
+ */
+export class RelicsView {
+    /**
+     * Creates a new RelicsView instance.
+     * @param {Partial<RelicsView>} [$$source = {}] - The source object to create the RelicsView.
+     */
+    constructor($$source = {}) {
+        if (!("total" in $$source)) {
+            /**
+             * total relics held
+             * @member
+             * @type {number}
+             */
+            this["total"] = 0;
+        }
+        if (!("types" in $$source)) {
+            /**
+             * distinct relic variants held
+             * @member
+             * @type {number}
+             */
+            this["types"] = 0;
+        }
+        if (!("items" in $$source)) {
+            /**
+             * @member
+             * @type {RelicRow[]}
+             */
+            this["items"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RelicsView instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {RelicsView}
+     */
+    static createFrom($$source = {}) {
+        const $$createField2_0 = $$createType13;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("items" in $$parsedSource) {
+            $$parsedSource["items"] = $$createField2_0($$parsedSource["items"]);
+        }
+        return new RelicsView(/** @type {Partial<RelicsView>} */($$parsedSource));
+    }
+}
+
 export class SellItem {
     /**
      * Creates a new SellItem instance.
@@ -758,3 +994,7 @@ const $$createType6 = $Create.Array($$createType5);
 const $$createType7 = MasterySummary.createFrom;
 const $$createType8 = MasteryItem.createFrom;
 const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = RelicReward.createFrom;
+const $$createType11 = $Create.Array($$createType10);
+const $$createType12 = RelicRow.createFrom;
+const $$createType13 = $Create.Array($$createType12);

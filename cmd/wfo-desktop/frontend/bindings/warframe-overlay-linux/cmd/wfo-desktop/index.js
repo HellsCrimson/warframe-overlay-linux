@@ -19,6 +19,9 @@ export {
     MasteryPart,
     MasterySummary,
     MasteryView,
+    RelicReward,
+    RelicRow,
+    RelicsView,
     SellItem,
     TradeRow
 } from "./models.js";
