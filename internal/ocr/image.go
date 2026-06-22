@@ -55,6 +55,39 @@ func binarizeColumn(img *image.RGBA, rect image.Rectangle) *image.Gray {
 	return out
 }
 
+// binarizeColumnTheme crops rect and keeps only pixels matching the detected UI
+// theme's accent colour as text (black on white). This isolates relic names from
+// busy backgrounds (notably the character render behind a Warframe blueprint).
+// If too few pixels match — e.g. theme detection was wrong — it falls back to the
+// luminance-based binarizeColumn.
+func binarizeColumnTheme(img *image.RGBA, rect image.Rectangle, t theme) *image.Gray {
+	rect = rect.Intersect(img.Bounds())
+	w := rect.Dx()
+	h := rect.Dy()
+	if w == 0 || h == 0 {
+		return image.NewGray(image.Rect(0, 0, 1, 1))
+	}
+	out := image.NewGray(image.Rect(0, 0, w, h))
+	textPixels := 0
+	for y := 0; y < h; y++ {
+		srow := img.Pix[(rect.Min.Y+y)*img.Stride:]
+		for x := 0; x < w; x++ {
+			p := srow[(rect.Min.X+x)*4:]
+			if t.isText(int(p[0]), int(p[1]), int(p[2])) {
+				out.Pix[y*out.Stride+x] = 0
+				textPixels++
+			} else {
+				out.Pix[y*out.Stride+x] = 255
+			}
+		}
+	}
+	// Sanity: a real name covers at least a fraction of a percent of the band.
+	if textPixels*1000 < w*h { // < 0.1%
+		return binarizeColumn(img, rect)
+	}
+	return out
+}
+
 // otsu returns the grayscale threshold maximizing between-class variance.
 func otsu(hist []int, total int) int {
 	if total == 0 {

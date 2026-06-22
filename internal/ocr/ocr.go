@@ -59,9 +59,13 @@ func (e *Engine) Recognize(img *image.RGBA, n int) ([]string, error) {
 	}
 	cols := items.RewardColumns(w, h, n)
 
+	// Detect the UI theme once over the whole name strip (more text => a stronger
+	// signal) and isolate each name by its accent colour.
+	activeTheme := detectTheme(img, items.RewardStrip(w, h))
+
 	var names []string
 	for _, rect := range cols {
-		bin := binarizeColumn(img, rect)
+		bin := binarizeColumnTheme(img, rect, activeTheme)
 		text, err := e.recognizeImage(bin)
 		if err != nil {
 			return nil, err
