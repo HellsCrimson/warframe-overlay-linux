@@ -16,6 +16,7 @@ import (
 type Inventory struct {
 	owned      map[string]int
 	parts      map[string]int // loose-signature part counts (for recipe matching)
+	masteryXP  map[string]int // lifetime affinity per item type (mastery source)
 	categories []Category
 }
 
@@ -63,7 +64,32 @@ func Parse(raw []byte) (*Inventory, error) {
 	if err := json.Unmarshal(raw, &eq); err == nil {
 		inv.categories = buildCategories(eq)
 	}
+
+	// XPInfo: lifetime affinity per item type. This is the authoritative mastery
+	// source — it persists after an item is sold and is recorded once per type,
+	// so it (not the current equipment list) determines what's been mastered.
+	var xp struct {
+		XPInfo []equipEntry `json:"XPInfo"`
+	}
+	if err := json.Unmarshal(raw, &xp); err == nil {
+		inv.masteryXP = make(map[string]int, len(xp.XPInfo))
+		for _, e := range xp.XPInfo {
+			if e.ItemType != "" && e.XP > inv.masteryXP[e.ItemType] {
+				inv.masteryXP[e.ItemType] = e.XP
+			}
+		}
+	}
 	return inv, nil
+}
+
+// MasteryXP returns the player's lifetime affinity for an item type (0 if never
+// leveled). This is the value that determines mastery, surviving the item being
+// sold and deduplicated across copies.
+func (inv *Inventory) MasteryXP(uniqueName string) int {
+	if inv == nil {
+		return 0
+	}
+	return inv.masteryXP[uniqueName]
 }
 
 // Categories returns the owned equipment grouped by kind (Warframes, Primary, …).

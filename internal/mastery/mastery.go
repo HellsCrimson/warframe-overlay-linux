@@ -83,23 +83,24 @@ func Rank(xp int, category string) int {
 	if xp <= 0 {
 		return 0
 	}
-	r := int(math.Sqrt(float64(xp) / float64(perRank)))
-	if r > maxRank {
-		r = maxRank
-	}
-	return r
+	return min(int(math.Sqrt(float64(xp)/float64(perRank))), maxRank)
 }
 
 // MaxRank returns the rank at which an item is fully mastered.
 func MaxRank(category string) int { _, m := classOf(category); return m }
 
 // Compute evaluates every masterable item against the player's inventory.
+//
+// Mastery is determined from lifetime affinity (inventory XPInfo), NOT the
+// current equipment list: mastery is permanent once earned, so an item that was
+// mastered and then sold still counts, and a low-rank duplicate copy doesn't
+// un-master it. Current ownership only decides whether an unmastered item can be
+// ranked up (you have a copy) or still needs to be acquired.
 func Compute(masterable []wfdata.Item, inv *inventory.Inventory) Result {
-	// Map owned equipment (built items) by uniqueName -> accumulated XP.
-	ownedXP := map[string]int{}
+	owned := map[string]bool{}
 	for _, c := range inv.Categories() {
 		for _, it := range c.Items {
-			ownedXP[it.Type] = it.XP
+			owned[it.Type] = true
 		}
 	}
 
@@ -112,25 +113,26 @@ func Compute(masterable []wfdata.Item, inv *inventory.Inventory) Result {
 			Category:   m.ProductCategory,
 			UniqueName: m.UniqueName,
 			MaxRank:    maxRank,
+			Rank:       Rank(inv.MasteryXP(m.UniqueName), m.ProductCategory),
 		}
 
-		if xp, built := ownedXP[m.UniqueName]; built {
-			it.Rank = Rank(xp, m.ProductCategory)
-			if it.Rank >= maxRank {
-				it.Status = Mastered
-				res.Summary.Mastered++
-				continue // mastered items aren't actionable
-			}
+		if it.Rank >= maxRank {
+			it.Status = Mastered
+			res.Summary.Mastered++
+			continue // mastered items aren't actionable
+		}
+
+		if owned[m.UniqueName] {
 			it.Status = BuiltUnranked
 			res.Summary.BuiltUnranked++
 		} else {
-			owned, total := countParts(m, inv)
-			it.PartsOwned, it.PartsTotal = owned, total
+			ownedParts, total := countParts(m, inv)
+			it.PartsOwned, it.PartsTotal = ownedParts, total
 			switch {
-			case total > 0 && owned >= total:
+			case total > 0 && ownedParts >= total:
 				it.Status = ReadyToBuild
 				res.Summary.ReadyToBuild++
-			case owned > 0:
+			case ownedParts > 0:
 				it.Status = PartsPartial
 				res.Summary.PartsPartial++
 			default:

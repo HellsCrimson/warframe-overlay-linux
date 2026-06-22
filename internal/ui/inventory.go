@@ -234,7 +234,13 @@ func filterRows(inv *inventory.Inventory, query string, resolve func(inventory.O
 		}
 		rows = append(rows, row{header: true, category: c.Name, count: len(matched)})
 		for _, it := range matched {
-			rows = append(rows, row{item: it, rankLabel: rankLabel(it.XP, c.ProductCategory)})
+			// Use lifetime mastery affinity (falls back to the current copy's XP)
+			// so a forma'd/duplicate copy still shows as mastered.
+			xp := it.XP
+			if mxp := inv.MasteryXP(it.Type); mxp > xp {
+				xp = mxp
+			}
+			rows = append(rows, row{item: it, rankLabel: rankLabel(xp, c.ProductCategory)})
 		}
 	}
 	return rows
