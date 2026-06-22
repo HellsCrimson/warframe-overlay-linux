@@ -10,13 +10,17 @@ import (
 	"os"
 	"time"
 
+	"warframe-overlay-linux/internal/config"
 	"warframe-overlay-linux/internal/inventory"
+	"warframe-overlay-linux/internal/mastery"
+	"warframe-overlay-linux/internal/wfdata"
 )
 
 func main() {
 	fetch := flag.Bool("fetch", false, "fetch inventory JSON from DE and write it to -o")
 	out := flag.String("o", "/tmp/inventory.json", "where to write fetched inventory JSON")
 	from := flag.String("from", "", "parse a local inventory JSON file and print owned counts for args")
+	masteryMode := flag.Bool("mastery", false, "with -from: compute and print mastery progress")
 	flag.Parse()
 
 	if *from != "" {
@@ -29,6 +33,31 @@ func main() {
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "parse:", err)
 			os.Exit(1)
+		}
+		if *masteryMode {
+			db, err := wfdata.Load(wfdata.Options{CacheDir: config.DefaultCacheDir()})
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "wfdata:", err)
+				os.Exit(1)
+			}
+			res := mastery.Compute(db.Masterable(), inv)
+			s := res.Summary
+			fmt.Printf("Mastery: %d total | %d mastered | %d built-unranked | %d ready | %d collecting | %d not-started\n",
+				s.Total, s.Mastered, s.BuiltUnranked, s.ReadyToBuild, s.PartsPartial, s.NotStarted)
+			fmt.Println("Best to do next:")
+			for i, it := range res.Items {
+				if i >= 25 {
+					break
+				}
+				extra := ""
+				if it.Status == mastery.BuiltUnranked {
+					extra = fmt.Sprintf(" (rank %d/%d)", it.Rank, it.MaxRank)
+				} else if it.PartsTotal > 0 {
+					extra = fmt.Sprintf(" (%d/%d parts)", it.PartsOwned, it.PartsTotal)
+				}
+				fmt.Printf("  %-26s %-18s%s\n", it.Name, it.Status, extra)
+			}
+			return
 		}
 		fmt.Printf("parsed %d owned prime parts\n", inv.Len())
 		for _, c := range inv.Categories() {

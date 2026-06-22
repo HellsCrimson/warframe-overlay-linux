@@ -42,8 +42,7 @@ func TestRewardTriggerOnceAndNoReplay(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Three co-firing markers for one screen -> exactly one reward event.
-	appendLine(t, path, "20.0 Game [Info]: Pause countdown done")
-	appendLine(t, path, "20.1 Script [Info]: Got rewards")
+	appendLine(t, path, "20.0 Sys [Info]: Created /Lotus/Interface/ProjectionRewardChoice.swf")
 	appendLine(t, path, "20.2 Sys [Info]: Created /Lotus/Interface/ProjectionRewardChoice.swf")
 
 	got := collect(t, events, 1500*time.Millisecond)
@@ -68,9 +67,9 @@ func TestSecondScreenAfterDebounce(t *testing.T) {
 	})
 	time.Sleep(100 * time.Millisecond)
 
-	appendLine(t, path, "1.0 Script [Info]: Got rewards")
+	appendLine(t, path, "1.0 Sys [Info]: Created /Lotus/Interface/ProjectionRewardChoice.swf")
 	time.Sleep(400 * time.Millisecond) // exceed debounce window
-	appendLine(t, path, "2.0 Script [Info]: Got rewards")
+	appendLine(t, path, "2.0 Sys [Info]: Created /Lotus/Interface/ProjectionRewardChoice.swf")
 
 	got := collect(t, events, 1500*time.Millisecond)
 	if rewardCount(got) != 2 {

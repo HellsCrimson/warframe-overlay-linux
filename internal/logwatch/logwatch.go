@@ -25,8 +25,11 @@ import (
 // substring is enough; the game typically writes more than one per screen, which
 // is why we debounce.
 var rewardMarkers = []string{
-	"Pause countdown done",
-	"Got rewards",
+	// The relic reward-SELECTION screen specifically. Earlier versions also
+	// matched "Pause countdown done" and "Got rewards", but those fire on every
+	// menu pause/unpause and every mission's end-of-mission tally respectively,
+	// causing false captures (e.g. just leaving the inventory). This swf line is
+	// written only for the fissure reward-choice screen.
 	"Created /Lotus/Interface/ProjectionRewardChoice.swf",
 }
 
@@ -211,6 +214,9 @@ func (w *watcher) drain(ctx context.Context) {
 			line = strings.TrimRight(line, "\r\n")
 			if containsAny(line, rewardMarkers) {
 				rewardSeen = true
+				// Diagnostic: surfaces exactly what triggered a capture, so a
+				// false positive can be identified from logs.
+				w.opts.Logger.Debug("logwatch: reward marker matched", "line", line)
 			}
 			if containsAny(line, closeMarkers) {
 				closeSeen = true

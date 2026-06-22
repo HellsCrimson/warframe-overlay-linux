@@ -11,6 +11,7 @@ package inventory
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -100,11 +101,11 @@ func ScrapeAuth(pid int) (Auth, error) {
 	defer mem.Close()
 
 	votes := map[Auth]int{}
-	sawAny := false
 	permDenied := false
 
-	const chunk = 4 << 20 // 4 MiB read window
+	const chunk = 8 << 20 // 8 MiB read window
 	const overlap = 128   // enough to hold accountId + nonce after the pattern
+	const enoughVotes = 3 // stop once a candidate is this confident
 	buf := make([]byte, chunk+overlap)
 
 	for _, r := range regions {
@@ -120,7 +121,10 @@ func ScrapeAuth(pid int) (Auth, error) {
 				}
 				break // region unreadable; move on
 			}
-			scanChunk(buf[:read], &votes, &sawAny)
+			if best := scanChunk(buf[:read], votes); best >= enoughVotes {
+				// Found the auth confidently; no need to scan gigabytes more.
+				return mostVoted(votes), nil
+			}
 		}
 	}
 
@@ -130,8 +134,10 @@ func ScrapeAuth(pid int) (Auth, error) {
 		}
 		return Auth{}, ErrAuthNotFound
 	}
+	return mostVoted(votes), nil
+}
 
-	// Pick the most-voted candidate.
+func mostVoted(votes map[Auth]int) Auth {
 	var best Auth
 	bestVotes := -1
 	for a, v := range votes {
@@ -139,24 +145,26 @@ func ScrapeAuth(pid int) (Auth, error) {
 			bestVotes, best = v, a
 		}
 	}
-	return best, nil
+	return best
 }
 
-// scanChunk finds every occurrence of the auth pattern in data and records the
-// extracted Auth.
-func scanChunk(data []byte, votes *map[Auth]int, sawAny *bool) {
+// scanChunk finds every occurrence of the auth pattern in data, records each
+// extracted Auth, and returns the highest vote count any candidate now has.
+func scanChunk(data []byte, votes map[Auth]int) int {
+	maxVotes := 0
 	from := 0
 	for {
-		idx := indexOf(data[from:], authPattern)
+		idx := bytes.Index(data[from:], authPattern)
 		if idx < 0 {
-			return
+			return maxVotes
 		}
 		pos := from + idx
 		from = pos + 1
-		a, ok := extractAuth(data[pos:])
-		if ok {
-			*sawAny = true
-			(*votes)[a]++
+		if a, ok := extractAuth(data[pos:]); ok {
+			votes[a]++
+			if votes[a] > maxVotes {
+				maxVotes = votes[a]
+			}
 		}
 	}
 }
@@ -253,30 +261,4 @@ func hasPrefixBytes(b []byte, s string) bool {
 		}
 	}
 	return true
-}
-
-// indexOf is a small Boyer-Moore-Horspool-free substring search (patterns are
-// short and rare, so the naive scan is fine and avoids allocations).
-func indexOf(haystack, needle []byte) int {
-	n, m := len(haystack), len(needle)
-	if m == 0 || m > n {
-		return -1
-	}
-	first := needle[0]
-	for i := 0; i <= n-m; i++ {
-		if haystack[i] != first {
-			continue
-		}
-		match := true
-		for j := 1; j < m; j++ {
-			if haystack[i+j] != needle[j] {
-				match = false
-				break
-			}
-		}
-		if match {
-			return i
-		}
-	}
-	return -1
 }

@@ -1,22 +1,47 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"gioui.org/layout"
+	"gioui.org/text"
 	"gioui.org/widget/material"
 
 	"warframe-overlay-linux/internal/inventory"
+	"warframe-overlay-linux/internal/mastery"
 )
+
+// friendlyErr turns the inventory module's typed errors into user-facing text.
+func friendlyErr(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, inventory.ErrNotRunning):
+		return "Warframe isn't running. Start the game and reload."
+	case errors.Is(err, inventory.ErrPermission):
+		return "Can't read the game's memory (permission)."
+	case errors.Is(err, inventory.ErrAuthNotFound):
+		return "Couldn't find your session — are you logged in?"
+	default:
+		return err.Error()
+	}
+}
+
+func errorsIsPermission(err error) bool {
+	return errors.Is(err, inventory.ErrPermission)
+}
 
 // row is one entry in the flattened, filtered inventory list: either a category
 // header or an item.
 type row struct {
-	header   bool
-	category string
-	count    int
-	item     inventory.OwnedItem
+	header    bool
+	category  string
+	count     int
+	item      inventory.OwnedItem
+	rankLabel string // e.g. "rank 30" or "★ 30" (mastered)
 }
 
 // layoutInventory draws the inventory view: a header bar with a load button and
@@ -27,8 +52,16 @@ func (a *App) layoutInventory(gtx layout.Context) layout.Dimensions {
 	}
 
 	a.mu.Lock()
-	inv, loading, loadErr := a.inv, a.loading, a.loadErr
+	inv, loading, loadErr, loadStart, names := a.inv, a.loading, a.loadErr, a.loadStart, a.names
 	a.mu.Unlock()
+	resolve := func(it inventory.OwnedItem) string {
+		if names != nil {
+			if n, ok := names.Name(it.Type); ok {
+				return n
+			}
+		}
+		return it.Name
+	}
 
 	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -45,20 +78,58 @@ func (a *App) layoutInventory(gtx layout.Context) layout.Dimensions {
 		}),
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 			if inv == nil {
-				return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					msg := "Load your inventory to begin."
-					if loading {
-						msg = "Loading…"
-					}
-					l := material.Body1(a.th, msg)
-					l.Color = rgb(0x80838d)
-					return l.Layout(gtx)
-				})
+				return a.inventoryEmpty(gtx, loading, loadErr, loadStart)
 			}
-			return a.inventoryList(gtx, inv)
+			return a.inventoryList(gtx, inv, resolve)
 		}),
 	)
 }
+
+// inventoryEmpty renders the centered state shown before any inventory is
+// available: a loading message (with elapsed time and, after a while, a hint to
+// grant memory-read permission), an error, or the initial prompt.
+func (a *App) inventoryEmpty(gtx layout.Context, loading bool, loadErr error, loadStart time.Time) layout.Dimensions {
+	return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Flex{Axis: layout.Vertical, Alignment: layout.Middle}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				var msg string
+				col := rgb(0x9a9da6)
+				switch {
+				case loading:
+					msg = "Getting your inventory…"
+				case loadErr != nil:
+					msg = friendlyErr(loadErr)
+					col = rgb(0xe0815a)
+				default:
+					msg = "Start Warframe, then click “Load from game”."
+				}
+				l := material.Body1(a.th, msg)
+				l.Color = col
+				l.Alignment = text.Middle
+				return l.Layout(gtx)
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				// Capability hint while a from-game load runs long, or on a
+				// permission error.
+				slow := loading && a.cfg.InventoryFile == "" && time.Since(loadStart) > 6*time.Second
+				perm := errorsIsPermission(loadErr)
+				if !slow && !perm {
+					return layout.Dimensions{}
+				}
+				return layout.Inset{Top: unitDp(14)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					hint := material.Body2(a.th, capabilityHint)
+					hint.Color = rgb(0x80838d)
+					hint.Alignment = text.Middle
+					return hint.Layout(gtx)
+				})
+			}),
+		)
+	})
+}
+
+const capabilityHint = "Reading the game's memory needs permission.\n" +
+	"Run:  sudo sysctl kernel.yama.ptrace_scope=0\n" +
+	"or grant the app CAP_SYS_PTRACE, then reload."
 
 func (a *App) inventoryHeader(gtx layout.Context, inv *inventory.Inventory, loading bool, loadErr error) layout.Dimensions {
 	return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
@@ -73,7 +144,7 @@ func (a *App) inventoryHeader(gtx layout.Context, inv *inventory.Inventory, load
 				case loading:
 					status = "Loading…"
 				case loadErr != nil:
-					status = loadErr.Error()
+					status = friendlyErr(loadErr)
 					col = rgb(0xe0664f)
 				case inv != nil:
 					total := 0
@@ -106,8 +177,8 @@ func buttonLabel(loading bool, file string) string {
 	return "Load from game"
 }
 
-func (a *App) inventoryList(gtx layout.Context, inv *inventory.Inventory) layout.Dimensions {
-	rows := filterRows(inv, a.search.Text())
+func (a *App) inventoryList(gtx layout.Context, inv *inventory.Inventory, resolve func(inventory.OwnedItem) string) layout.Dimensions {
+	rows := filterRows(inv, a.search.Text(), resolve)
 	if len(rows) == 0 {
 		return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			l := material.Body1(a.th, "No items match your search.")
@@ -131,24 +202,29 @@ func (a *App) inventoryList(gtx layout.Context, inv *inventory.Inventory) layout
 					return material.Body2(a.th, r.item.Name).Layout(gtx)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					rank := material.Caption(a.th, masteryLabel(r.item.XP))
-					rank.Color = rgb(0x80838d)
-					return rank.Layout(gtx)
+					lbl := material.Caption(a.th, r.rankLabel)
+					if strings.HasPrefix(r.rankLabel, "★") {
+						lbl.Color = rgb(0x6fae6a) // mastered
+					} else {
+						lbl.Color = rgb(0x80838d)
+					}
+					return lbl.Layout(gtx)
 				}),
 			)
 		})
 	})
 }
 
-// filterRows flattens the categories into header+item rows, applying a
-// case-insensitive substring filter on item names. A category header is shown
-// only if it has at least one matching item.
-func filterRows(inv *inventory.Inventory, query string) []row {
+// filterRows flattens the categories into header+item rows, resolving each
+// item's display name and applying a case-insensitive substring filter on it. A
+// category header is shown only if it has at least one matching item.
+func filterRows(inv *inventory.Inventory, query string, resolve func(inventory.OwnedItem) string) []row {
 	q := strings.ToLower(strings.TrimSpace(query))
 	var rows []row
 	for _, c := range inv.Categories() {
 		var matched []inventory.OwnedItem
 		for _, it := range c.Items {
+			it.Name = resolve(it)
 			if q == "" || strings.Contains(strings.ToLower(it.Name), q) {
 				matched = append(matched, it)
 			}
@@ -158,21 +234,18 @@ func filterRows(inv *inventory.Inventory, query string) []row {
 		}
 		rows = append(rows, row{header: true, category: c.Name, count: len(matched)})
 		for _, it := range matched {
-			rows = append(rows, row{item: it})
+			rows = append(rows, row{item: it, rankLabel: rankLabel(it.XP, c.ProductCategory)})
 		}
 	}
 	return rows
 }
 
-// masteryLabel describes an item's mastery progress from its accumulated XP.
-// Equipment masters at rank 30; non-warframe items need 1,600,000 affinity total,
-// warframes/companions 1,600,000 as well at rank 30 (we show a coarse "maxed"
-// hint rather than an exact rank, which depends on item class).
-func masteryLabel(xp int) string {
-	const maxRankXP = 1600000
-	if xp >= maxRankXP {
-		return "rank 30"
+// rankLabel describes an item's mastery rank from its accumulated affinity,
+// using the correct per-class curve. Mastered items get a star.
+func rankLabel(xp int, productCategory string) string {
+	r := mastery.Rank(xp, productCategory)
+	if r >= mastery.MaxRank(productCategory) {
+		return fmt.Sprintf("★ %d", r)
 	}
-	pct := xp * 100 / maxRankXP
-	return fmt.Sprintf("%d%%", pct)
+	return fmt.Sprintf("rank %d", r)
 }

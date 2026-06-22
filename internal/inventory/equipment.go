@@ -11,8 +11,11 @@ type OwnedItem struct {
 
 // Category groups owned equipment of one kind (Warframes, Primary, …).
 type Category struct {
-	Name  string
-	Items []OwnedItem
+	Name string
+	// ProductCategory is the raw inventory key (Suits, LongGuns, …), used to pick
+	// the correct mastery affinity curve.
+	ProductCategory string
+	Items           []OwnedItem
 }
 
 type equipEntry struct {
@@ -44,22 +47,23 @@ type equipJSON struct {
 func buildCategories(eq equipJSON) []Category {
 	ordered := []struct {
 		label   string
+		product string
 		entries []equipEntry
 	}{
-		{"Warframes", eq.Suits},
-		{"Primary", eq.LongGuns},
-		{"Secondary", eq.Pistols},
-		{"Melee", eq.Melee},
-		{"Archwing", eq.SpaceSuits},
-		{"Arch-Gun", eq.SpaceGuns},
-		{"Arch-Melee", eq.SpaceMelee},
-		{"Sentinels", eq.Sentinels},
-		{"Sentinel Weapons", eq.SentinelWeapons},
-		{"MOA Companions", eq.MoaPets},
-		{"Beast Companions", eq.KubrowPets},
-		{"Necramechs", eq.MechSuits},
-		{"Amps", eq.OperatorAmps},
-		{"K-Drives", eq.Hoverboards},
+		{"Warframes", "Suits", eq.Suits},
+		{"Primary", "LongGuns", eq.LongGuns},
+		{"Secondary", "Pistols", eq.Pistols},
+		{"Melee", "Melee", eq.Melee},
+		{"Archwing", "SpaceSuits", eq.SpaceSuits},
+		{"Arch-Gun", "SpaceGuns", eq.SpaceGuns},
+		{"Arch-Melee", "SpaceMelee", eq.SpaceMelee},
+		{"Sentinels", "Sentinels", eq.Sentinels},
+		{"Sentinel Weapons", "SentinelWeapons", eq.SentinelWeapons},
+		{"MOA Companions", "MoaPets", eq.MoaPets},
+		{"Beast Companions", "KubrowPets", eq.KubrowPets},
+		{"Necramechs", "MechSuits", eq.MechSuits},
+		{"Amps", "OperatorAmps", eq.OperatorAmps},
+		{"K-Drives", "Hoverboards", eq.Hoverboards},
 	}
 	var cats []Category
 	for _, o := range ordered {
@@ -77,7 +81,7 @@ func buildCategories(eq equipJSON) []Category {
 				XP:   e.XP,
 			})
 		}
-		cats = append(cats, Category{Name: o.label, Items: items})
+		cats = append(cats, Category{Name: o.label, ProductCategory: o.product, Items: items})
 	}
 	return cats
 }

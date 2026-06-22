@@ -15,6 +15,7 @@ import (
 // categories for the app's collection view.
 type Inventory struct {
 	owned      map[string]int
+	parts      map[string]int // loose-signature part counts (for recipe matching)
 	categories []Category
 }
 
@@ -39,18 +40,19 @@ func Parse(raw []byte) (*Inventory, error) {
 	if err := json.Unmarshal(raw, &j); err != nil {
 		return nil, err
 	}
-	inv := &Inventory{owned: make(map[string]int)}
+	inv := &Inventory{owned: make(map[string]int), parts: make(map[string]int)}
 	add := func(entries []invEntry) {
 		for _, e := range entries {
 			if !strings.Contains(e.ItemType, "Prime") {
 				continue
 			}
-			leaf := e.ItemType[strings.LastIndexByte(e.ItemType, '/')+1:]
-			sig := signature(pascalRe.FindAllString(leaf, -1))
-			if sig == "" {
-				continue
+			tokens := pascalRe.FindAllString(e.ItemType[strings.LastIndexByte(e.ItemType, '/')+1:], -1)
+			if sig := signature(tokens); sig != "" {
+				inv.owned[sig] += e.ItemCount
 			}
-			inv.owned[sig] += e.ItemCount
+			if ps := partSignature(tokens); ps != "" {
+				inv.parts[ps] += e.ItemCount
+			}
 		}
 	}
 	add(j.MiscItems)
@@ -82,6 +84,38 @@ func (inv *Inventory) Owned(displayName string) int {
 
 // Len reports how many distinct owned prime parts were parsed.
 func (inv *Inventory) Len() int { return len(inv.owned) }
+
+// PartCount returns how many of a named prime part the player owns, matching
+// loosely so a build-recipe component resolves to the owned drop: it ignores
+// "prime", "blueprint" and "component" (warframe components are internally
+// "…Component" but owned as "…Blueprint") and word order. E.g.
+// PartCount("Rhino Prime Chassis") matches an owned "Rhino Prime Chassis
+// Blueprint".
+func (inv *Inventory) PartCount(name string) int {
+	if inv == nil {
+		return 0
+	}
+	return inv.parts[partSignature(strings.Fields(name))]
+}
+
+// partSignature drops "blueprint" and "component" (warframe components are
+// internally "…Component" but owned as "…Blueprint") and sorts the remaining
+// tokens for word-order independence. Unlike signature() it KEEPS "prime", so a
+// non-prime part ("Braton Blueprint") does not collide with its prime variant
+// ("Braton Prime Blueprint").
+func partSignature(tokens []string) string {
+	out := make([]string, 0, len(tokens))
+	for _, t := range tokens {
+		t = keepAlnum(strings.ToLower(t))
+		switch t {
+		case "", "blueprint", "component":
+			continue
+		}
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return strings.Join(out, " ")
+}
 
 // signature normalizes a set of word tokens to a canonical, order-independent
 // key: lowercase, alphanumeric only, dropping the ubiquitous "prime" token (its

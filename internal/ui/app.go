@@ -16,7 +16,10 @@ import (
 	"gioui.org/widget"
 	"gioui.org/widget/material"
 
+	"warframe-overlay-linux/internal/config"
 	"warframe-overlay-linux/internal/inventory"
+	"warframe-overlay-linux/internal/mastery"
+	"warframe-overlay-linux/internal/wfdata"
 )
 
 // Config configures the app.
@@ -24,14 +27,14 @@ type Config struct {
 	// InventoryFile, if set, loads inventory from a saved JSON file instead of
 	// scraping the running game (development).
 	InventoryFile string
+	// StartTab selects the initially-shown section by name (e.g. "Mastery").
+	StartTab string
 }
 
 // Run drives the Gio window event loop until the window is destroyed.
 func Run(w *app.Window, cfg Config) error {
 	a := newApp(cfg, w.Invalidate)
-	if cfg.InventoryFile != "" {
-		a.startLoad() // auto-load from file on startup
-	}
+	a.startLoad() // auto-load on startup (from file, or by scraping the game)
 	var ops op.Ops
 	for {
 		switch e := w.Event().(type) {
@@ -52,7 +55,7 @@ type section struct {
 
 var sections = []section{
 	{"Inventory", true},
-	{"Mastery", false},
+	{"Mastery", true},
 	{"Trades", false},
 	{"Analytics", false},
 }
@@ -70,10 +73,17 @@ type App struct {
 	search  widget.Editor
 	invList widget.List
 
-	mu      sync.Mutex
-	inv     *inventory.Inventory
-	loading bool
-	loadErr error
+	masteryList    widget.List
+	hideNotStarted widget.Bool
+	masteryRes     *mastery.Result // cached mastery computation
+	masteryDirty   bool
+
+	mu        sync.Mutex
+	inv       *inventory.Inventory
+	loading   bool
+	loadErr   error
+	loadStart time.Time
+	names     *wfdata.DB // item metadata for name resolution (loaded in background)
 }
 
 func newApp(cfg Config, invalidate func()) *App {
@@ -86,10 +96,53 @@ func newApp(cfg Config, invalidate func()) *App {
 		ContrastFg: rgb(0x10100a),
 	}
 	a := &App{th: th, cfg: cfg, invalidate: invalidate}
+	for i, s := range sections {
+		if s.ready && s.name == cfg.StartTab {
+			a.sel = i
+		}
+	}
 	a.navBtns = make([]widget.Clickable, len(sections))
 	a.search.SingleLine = true
 	a.invList.Axis = layout.Vertical
+	a.masteryList.Axis = layout.Vertical
+	a.hideNotStarted.Value = true
+	a.loadNames()
 	return a
+}
+
+// masteryResult returns the cached mastery computation, recomputing it when the
+// inventory or item metadata have changed and both are available.
+func (a *App) masteryResult() *mastery.Result {
+	a.mu.Lock()
+	inv, names, dirty, cached := a.inv, a.names, a.masteryDirty, a.masteryRes
+	a.mu.Unlock()
+	if inv == nil || names == nil {
+		return nil
+	}
+	if cached != nil && !dirty {
+		return cached
+	}
+	res := mastery.Compute(names.Masterable(), inv)
+	a.mu.Lock()
+	a.masteryRes, a.masteryDirty = &res, false
+	a.mu.Unlock()
+	return &res
+}
+
+// loadNames loads item metadata (uniqueName -> canonical name, masterable) in the
+// background and repaints when ready so display names resolve.
+func (a *App) loadNames() {
+	go func() {
+		db, err := wfdata.Load(wfdata.Options{CacheDir: config.DefaultCacheDir()})
+		if err != nil {
+			return // names stay as the inventory's fallback prettified leaf
+		}
+		a.mu.Lock()
+		a.names = db
+		a.masteryDirty = true
+		a.mu.Unlock()
+		a.invalidate()
+	}()
 }
 
 // startLoad loads the inventory in the background (from file if configured, else
@@ -102,7 +155,25 @@ func (a *App) startLoad() {
 	}
 	a.loading = true
 	a.loadErr = nil
+	a.loadStart = time.Now()
 	a.mu.Unlock()
+
+	// Repaint periodically so the elapsed time and capability hint update, and so
+	// the window stays responsive (never flagged "not responding") during a long
+	// memory scan.
+	go func() {
+		t := time.NewTicker(500 * time.Millisecond)
+		defer t.Stop()
+		for range t.C {
+			a.mu.Lock()
+			loading := a.loading
+			a.mu.Unlock()
+			if !loading {
+				return
+			}
+			a.invalidate()
+		}
+	}()
 
 	go func() {
 		var (
@@ -112,12 +183,13 @@ func (a *App) startLoad() {
 		if a.cfg.InventoryFile != "" {
 			inv, err = inventory.LoadFile(a.cfg.InventoryFile)
 		} else {
-			ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 			inv, err = inventory.Load(ctx)
 		}
 		a.mu.Lock()
 		a.inv, a.loadErr, a.loading = inv, err, false
+		a.masteryDirty = true
 		a.mu.Unlock()
 		a.invalidate()
 	}()
@@ -144,6 +216,8 @@ func (a *App) Layout(gtx layout.Context) layout.Dimensions {
 				switch sections[a.sel].name {
 				case "Inventory":
 					return a.layoutInventory(gtx)
+				case "Mastery":
+					return a.layoutMastery(gtx)
 				default:
 					return a.layoutPlaceholder(gtx, sections[a.sel].name)
 				}
