@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,8 @@ var (
 	statsURLVar  = "https://api.warframe.market/v1/items/%s/statistics"
 	authBaseURL  = "https://api.warframe.market/v1"
 	ordersURLVar = "https://api.warframe.market/v1/profile/orders"
+	// publicOrdersURLVar lists all public buy/sell orders for an item slug.
+	publicOrdersURLVar = "https://api.warframe.market/v1/items/%s/orders"
 )
 
 // iconBase prefixes warframe.market relative image paths.
@@ -189,6 +192,87 @@ func (c *Client) PriceByName(name string) (int, error) {
 		return 0, fmt.Errorf("wfmarket: no slug for %q", name)
 	}
 	return c.Price(slug)
+}
+
+// Order is one public sell listing for an item.
+type Order struct {
+	Seller   string
+	Platinum int
+	Quantity int
+	Status   string // "ingame" | "online" | "offline"
+}
+
+type ordersResp struct {
+	Payload struct {
+		Orders []struct {
+			Platinum  int    `json:"platinum"`
+			Quantity  int    `json:"quantity"`
+			OrderType string `json:"order_type"`
+			Visible   bool   `json:"visible"`
+			User      struct {
+				IngameName string `json:"ingame_name"`
+				Status     string `json:"status"`
+			} `json:"user"`
+		} `json:"orders"`
+	} `json:"payload"`
+}
+
+// SellOrders returns public sell listings for an item display name — online
+// sellers first, then cheapest first — capped at limit (0 = no cap).
+func (c *Client) SellOrders(name string, limit int) ([]Order, error) {
+	if err := c.LoadItems(); err != nil {
+		return nil, err
+	}
+	slug, ok := c.Slug(name)
+	if !ok {
+		return nil, fmt.Errorf("wfmarket: no slug for %q", name)
+	}
+	c.throttle()
+	resp, err := c.http.Get(fmt.Sprintf(publicOrdersURLVar, slug))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("wfmarket: orders %s status %d", slug, resp.StatusCode)
+	}
+	var o ordersResp
+	if err := json.NewDecoder(resp.Body).Decode(&o); err != nil {
+		return nil, err
+	}
+	out := make([]Order, 0, len(o.Payload.Orders))
+	for _, ord := range o.Payload.Orders {
+		if ord.OrderType != "sell" || !ord.Visible || ord.User.IngameName == "" {
+			continue
+		}
+		out = append(out, Order{
+			Seller: ord.User.IngameName, Platinum: ord.Platinum,
+			Quantity: ord.Quantity, Status: ord.User.Status,
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if ri, rj := statusRank(out[i].Status), statusRank(out[j].Status); ri != rj {
+			return ri < rj
+		}
+		return out[i].Platinum < out[j].Platinum
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+// statusRank orders sellers by how reachable they are: in-game, then online,
+// then offline.
+func statusRank(s string) int {
+	switch s {
+	case "ingame":
+		return 0
+	case "online":
+		return 1
+	default:
+		return 2
+	}
 }
 
 func (c *Client) throttle() {

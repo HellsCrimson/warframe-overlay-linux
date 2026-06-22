@@ -13,6 +13,7 @@ export {
     InvItem,
     ListResult,
     LoadStatus,
+    MarketSeller,
     MarketStatus,
     MasteryItem,
     MasteryPart,

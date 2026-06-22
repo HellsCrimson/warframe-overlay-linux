@@ -108,6 +108,18 @@ export function MarketStatus() {
 }
 
 /**
+ * PartSellers looks up warframe.market sellers for a part (by its "<item>
+ * <component>" query) and returns each with a copyable purchase whisper.
+ * @param {string} query
+ * @returns {$CancellablePromise<$models.MarketSeller[]>}
+ */
+export function PartSellers(query) {
+    return $Call.ByID(1999966532, query).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType10($result);
+    }));
+}
+
+/**
  * RefreshLivePrices fetches warframe.market median prices for the given items.
  * @param {string[]} names
  * @returns {$CancellablePromise<void>}
@@ -126,3 +138,5 @@ const $$createType5 = $Create.Array($$createType4);
 const $$createType6 = $models.ListResult.createFrom;
 const $$createType7 = $models.LoadStatus.createFrom;
 const $$createType8 = $models.MarketStatus.createFrom;
+const $$createType9 = $models.MarketSeller.createFrom;
+const $$createType10 = $Create.Array($$createType9);

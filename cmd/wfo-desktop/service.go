@@ -212,9 +212,10 @@ type MasterySummary struct {
 // MasteryPart is one recipe component with how many the player owns vs needs
 // (recipes can require more than one, e.g. two blades).
 type MasteryPart struct {
-	Name string `json:"name"`
-	Have int    `json:"have"`
-	Need int    `json:"need"`
+	Name  string `json:"name"`
+	Query string `json:"query"` // "<item> <component>" for market lookup
+	Have  int    `json:"have"`
+	Need  int    `json:"need"`
 }
 
 type MasteryItem struct {
@@ -227,7 +228,6 @@ type MasteryItem struct {
 	PartsTotal int           `json:"partsTotal"`
 	Parts      []MasteryPart `json:"parts"` // per-component detail (collecting items)
 	Icon       string        `json:"icon"`
-	WTB        string        `json:"wtb"` // copyable "WTB …" for missing parts
 }
 
 type MasteryView struct {
@@ -238,7 +238,7 @@ type MasteryView struct {
 // GetMastery computes the best-to-do-next mastery view.
 func (s *Service) GetMastery() MasteryView {
 	s.mu.Lock()
-	inv, names, prices := s.inv, s.names, s.prices
+	inv, names := s.inv, s.names
 	s.mu.Unlock()
 	if inv == nil || names == nil {
 		return MasteryView{}
@@ -248,7 +248,7 @@ func (s *Service) GetMastery() MasteryView {
 	for _, it := range res.Items {
 		var parts []MasteryPart
 		for _, p := range it.Parts {
-			parts = append(parts, MasteryPart{Name: p.Name, Have: p.Have, Need: p.Need})
+			parts = append(parts, MasteryPart{Name: p.Name, Query: p.Query, Have: p.Have, Need: p.Need})
 		}
 		view.Items = append(view.Items, MasteryItem{
 			Name: it.Name, Category: it.Category, Status: it.Status.String(),
@@ -256,39 +256,47 @@ func (s *Service) GetMastery() MasteryView {
 			PartsOwned: it.PartsOwned, PartsTotal: it.PartsTotal,
 			Parts: parts,
 			Icon:  names.ImageURLByName(it.Name),
-			WTB:   wtbMessage(it, prices),
 		})
 	}
 	return view
 }
 
-func wtbMessage(it mastery.Item, prices *db.Database) string {
-	var parts []string
-	for _, p := range it.Parts {
-		if p.Owned() {
-			continue
-		}
-		name, price := p.Query, 0
-		if prices != nil {
-			if item := prices.FindPart(p.Query); item != nil {
-				name = item.DropName
-				price = int(item.Platinum + 0.5)
-			}
-		}
-		qty := ""
-		if p.Missing() > 1 {
-			qty = fmt.Sprintf(" x%d", p.Missing())
-		}
-		if price > 0 {
-			parts = append(parts, fmt.Sprintf("[%s]%s %dp", name, qty, price))
-		} else {
-			parts = append(parts, fmt.Sprintf("[%s]%s", name, qty))
+// MarketSeller is one warframe.market seller of a part, with a ready-to-send
+// in-game whisper to buy it.
+type MarketSeller struct {
+	User     string `json:"user"`
+	Platinum int    `json:"platinum"`
+	Quantity int    `json:"quantity"`
+	Status   string `json:"status"` // ingame | online | offline
+	Whisper  string `json:"whisper"`
+}
+
+// PartSellers looks up warframe.market sellers for a part (by its "<item>
+// <component>" query) and returns each with a copyable purchase whisper.
+func (s *Service) PartSellers(query string) []MarketSeller {
+	s.mu.Lock()
+	prices := s.prices
+	s.mu.Unlock()
+
+	name := query
+	if prices != nil {
+		if item := prices.FindPart(query); item != nil {
+			name = item.DropName
 		}
 	}
-	if len(parts) == 0 {
-		return ""
+	orders, err := s.market.SellOrders(name, 12)
+	if err != nil {
+		return nil
 	}
-	return "WTB " + strings.Join(parts, " ")
+	out := make([]MarketSeller, 0, len(orders))
+	for _, o := range orders {
+		out = append(out, MarketSeller{
+			User: o.Seller, Platinum: o.Platinum, Quantity: o.Quantity, Status: o.Status,
+			Whisper: fmt.Sprintf("/w %s Hi! I want to buy: \"%s\" for %d platinum. (warframe.market from warframe-overlay-linux)",
+				o.Seller, name, o.Platinum),
+		})
+	}
+	return out
 }
 
 // ---- Trades -----------------------------------------------------------------

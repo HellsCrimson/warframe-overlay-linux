@@ -282,6 +282,67 @@ export class LoadStatus {
     }
 }
 
+/**
+ * MarketSeller is one warframe.market seller of a part, with a ready-to-send
+ * in-game whisper to buy it.
+ */
+export class MarketSeller {
+    /**
+     * Creates a new MarketSeller instance.
+     * @param {Partial<MarketSeller>} [$$source = {}] - The source object to create the MarketSeller.
+     */
+    constructor($$source = {}) {
+        if (!("user" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["user"] = "";
+        }
+        if (!("platinum" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["platinum"] = 0;
+        }
+        if (!("quantity" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["quantity"] = 0;
+        }
+        if (!("status" in $$source)) {
+            /**
+             * ingame | online | offline
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("whisper" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["whisper"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MarketSeller instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {MarketSeller}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MarketSeller(/** @type {Partial<MarketSeller>} */($$parsedSource));
+    }
+}
+
 export class MarketStatus {
     /**
      * Creates a new MarketStatus instance.
@@ -395,14 +456,6 @@ export class MasteryItem {
              */
             this["icon"] = "";
         }
-        if (!("wtb" in $$source)) {
-            /**
-             * copyable "WTB …" for missing parts
-             * @member
-             * @type {string}
-             */
-            this["wtb"] = "";
-        }
 
         Object.assign(this, $$source);
     }
@@ -438,6 +491,14 @@ export class MasteryPart {
              * @type {string}
              */
             this["name"] = "";
+        }
+        if (!("query" in $$source)) {
+            /**
+             * "<item> <component>" for market lookup
+             * @member
+             * @type {string}
+             */
+            this["query"] = "";
         }
         if (!("have" in $$source)) {
             /**

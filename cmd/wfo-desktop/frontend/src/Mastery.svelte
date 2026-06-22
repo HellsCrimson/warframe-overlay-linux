@@ -5,6 +5,10 @@ let { loaded, status } = $props();
 let view = $state(null);
 let hideNotStarted = $state(true);
 let selected = $state("");
+let selPart = $state("");        // query of the part whose sellers are shown
+let sellers = $state(null);      // seller rows, or null while loading
+let loadingSellers = $state(false);
+let copied = $state("");         // whisper just copied (for feedback)
 
 $effect(() => { if (loaded) Service.GetMastery().then((v) => (view = v)); });
 
@@ -15,14 +19,30 @@ const statusColor = {
 let items = $derived(
   !view ? [] : view.items.filter((it) => !hideNotStarted || it.status !== "Not started")
 );
-let sel = $derived(items.find((it) => it.name === selected));
 
 function detail(it) {
   if (it.status === "Built — rank up") return `rank ${it.rank} / ${it.maxRank}`;
   if (it.partsTotal > 0) return `${it.partsOwned} / ${it.partsTotal} parts`;
   return "";
 }
-function copyWTB() { if (sel?.wtb) navigator.clipboard.writeText(sel.wtb); }
+
+function pickItem(it) {
+  selPart = ""; sellers = null; copied = "";
+  selected = selected === it.name ? "" : it.name;
+}
+
+function pickPart(p) {
+  copied = "";
+  if (selPart === p.query) { selPart = ""; sellers = null; return; }
+  selPart = p.query;
+  sellers = null;
+  loadingSellers = true;
+  Service.PartSellers(p.query).then((rows) => {
+    if (selPart === p.query) { sellers = rows || []; loadingSellers = false; }
+  });
+}
+
+function copy(text) { navigator.clipboard.writeText(text); copied = text; }
 </script>
 
 <header class="head"><h1>Mastery</h1></header>
@@ -42,8 +62,7 @@ function copyWTB() { if (sel?.wtb) navigator.clipboard.writeText(sel.wtb); }
   <div class="scroll">
     {#each items as it}
       <div class="row" class:active={it.name === selected}
-           onclick={() => (selected = selected === it.name ? "" : it.name)}
-           role="button" tabindex="0">
+           onclick={() => pickItem(it)} role="button" tabindex="0">
         {#if it.icon}<img class="thumb" src={it.icon} alt="" loading="lazy" />{:else}<div class="thumb ph"></div>{/if}
         <span class="iname">{it.name}</span>
         <span class="muted" style="margin-right:12px">{detail(it)}</span>
@@ -52,24 +71,38 @@ function copyWTB() { if (sel?.wtb) navigator.clipboard.writeText(sel.wtb); }
       {#if it.name === selected && it.parts && it.parts.length}
         <div class="parts">
           {#each it.parts as p}
-            <span class="part" class:have={p.have >= p.need} title={p.have >= p.need ? "owned" : `need ${p.need - p.have} more`}>
+            <button type="button" class="part" class:have={p.have >= p.need} class:sel={selPart === p.query}
+                    title={p.have >= p.need ? "owned" : `need ${p.need - p.have} more — click for sellers`}
+                    onclick={() => pickPart(p)}>
               {p.name}
               <b>{p.have}/{p.need}</b>
-            </span>
+            </button>
           {/each}
         </div>
+        {#if selPart && (loadingSellers || sellers)}
+          <div class="sellers">
+            {#if loadingSellers}
+              <div class="muted">Loading sellers from warframe.market…</div>
+            {:else if !sellers.length}
+              <div class="muted">No sellers found on warframe.market.</div>
+            {:else}
+              {#each sellers as o}
+                <div class="seller">
+                  <span class="dot {o.status}" title={o.status}></span>
+                  <span class="sname">{o.user}</span>
+                  <span class="muted">{o.platinum}p · ×{o.quantity}</span>
+                  <button class="btn copy" class:done={copied === o.whisper}
+                          onclick={() => copy(o.whisper)}>
+                    {copied === o.whisper ? "Copied ✓" : "Copy whisper"}
+                  </button>
+                </div>
+              {/each}
+            {/if}
+          </div>
+        {/if}
       {/if}
     {/each}
   </div>
-  {#if sel && sel.wtb}
-    <div class="bar">
-      <div style="flex:1">
-        <div class="muted">Buy missing parts for {sel.name}</div>
-        <div>{sel.wtb}</div>
-      </div>
-      <button class="btn" onclick={copyWTB}>Copy WTB</button>
-    </div>
-  {/if}
 {/if}
 
 <style>
@@ -81,9 +114,24 @@ function copyWTB() { if (sel?.wtb) navigator.clipboard.writeText(sel.wtb); }
 }
 .part {
   display: inline-flex; align-items: baseline; gap: 5px;
-  padding: 2px 8px; border-radius: 10px;
-  font-size: 12px; color: #d98c5f; background: rgba(217,140,95,0.12);
+  padding: 3px 9px; border-radius: 10px; cursor: pointer;
+  font: inherit; font-size: 12px; color: #d98c5f;
+  background: rgba(217,140,95,0.12); border: 1px solid transparent;
 }
+.part:hover { border-color: currentColor; }
+.part.sel { border-color: currentColor; }
 .part.have { color: var(--green); background: rgba(120,190,120,0.12); }
 .part b { font-weight: 600; }
+.sellers {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 4px 12px 12px 56px; background: var(--panel2);
+}
+.seller { display: flex; align-items: center; gap: 10px; }
+.seller .sname { font-weight: 600; min-width: 0; }
+.seller .muted { margin-right: auto; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #6a6d77; flex: none; }
+.dot.ingame { background: var(--green); }
+.dot.online { background: var(--gold); }
+.btn.copy { padding: 2px 10px; font-size: 12px; }
+.btn.copy.done { color: var(--green); }
 </style>
