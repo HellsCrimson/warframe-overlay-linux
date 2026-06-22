@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -37,7 +38,44 @@ type Item struct {
 
 // Database is the in-memory, queryable item set.
 type Database struct {
-	items []Item
+	items  []Item
+	byPart map[string]int // part signature -> index into items
+}
+
+// FindPart resolves a (possibly suffix-less) part name to its canonical item,
+// matching loosely on a sorted-token signature that ignores "blueprint"/
+// "component" — so "Mesa Prime Chassis" resolves to "Mesa Prime Chassis
+// Blueprint". Returns nil when unknown.
+func (d *Database) FindPart(name string) *Item {
+	if d == nil || d.byPart == nil {
+		return nil
+	}
+	if i, ok := d.byPart[partSig(name)]; ok {
+		return &d.items[i]
+	}
+	return nil
+}
+
+// partSig is a sorted-token signature dropping "blueprint"/"component" (but
+// keeping "prime", so prime and non-prime variants stay distinct).
+func partSig(name string) string {
+	fields := strings.Fields(strings.ToLower(name))
+	out := fields[:0]
+	for _, f := range fields {
+		var b strings.Builder
+		for _, r := range f {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+				b.WriteRune(r)
+			}
+		}
+		t := b.String()
+		if t == "" || t == "blueprint" || t == "component" {
+			continue
+		}
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return strings.Join(out, " ")
 }
 
 // priceItem matches one element of prices.json. custom_avg arrives as a JSON
@@ -144,6 +182,12 @@ func Load(opts Options) (*Database, error) {
 				Platinum: plat,
 				Ducats:   part.Ducats,
 			})
+		}
+	}
+	db.byPart = make(map[string]int, len(db.items))
+	for i := range db.items {
+		if sig := partSig(db.items[i].DropName); sig != "" {
+			db.byPart[sig] = i
 		}
 	}
 	opts.Logger.Info("db loaded", "items", len(db.items))
@@ -286,6 +330,14 @@ func partialDistance(cand, hay string) int {
 
 // Len reports how many items were loaded.
 func (d *Database) Len() int { return len(d.items) }
+
+// Items returns all known tradeable items (name, drop name, platinum, ducats).
+func (d *Database) Items() []Item {
+	if d == nil {
+		return nil
+	}
+	return d.items
+}
 
 // normalizeName lowercases and strips non-alphanumeric characters for matching.
 func normalizeName(s string) string {

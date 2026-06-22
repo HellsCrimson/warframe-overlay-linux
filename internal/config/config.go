@@ -75,3 +75,14 @@ func DefaultCacheDir() string {
 	}
 	return filepath.Join(base, "warframe-overlay-linux")
 }
+
+// DefaultConfigDir returns $XDG_CONFIG_HOME/warframe-overlay-linux (or the
+// ~/.config fallback). Used for credentials and settings.
+func DefaultConfigDir() string {
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		home, _ := os.UserHomeDir()
+		base = filepath.Join(home, ".config")
+	}
+	return filepath.Join(base, "warframe-overlay-linux")
+}

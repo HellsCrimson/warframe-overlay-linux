@@ -38,6 +38,30 @@ func (s Status) String() string {
 	}
 }
 
+// Part is one acquirable component of a buildable item, with how many the recipe
+// needs and how many the player owns (recipes can need more than one, e.g. two
+// blades).
+type Part struct {
+	// Query is "<item name> <component name>" for resolving the tradeable part
+	// (e.g. "Mesa Prime Chassis" -> "Mesa Prime Chassis Blueprint").
+	Query string
+	// Name is the component's display name (e.g. "Blade", "Chassis", "Blueprint").
+	Name string
+	Need int // how many the recipe requires
+	Have int // how many the player owns
+}
+
+// Owned reports whether the player has enough of this part to build.
+func (p Part) Owned() bool { return p.Have >= p.Need }
+
+// Missing is how many more of this part are needed (0 once satisfied).
+func (p Part) Missing() int {
+	if p.Have >= p.Need {
+		return 0
+	}
+	return p.Need - p.Have
+}
+
 // Item is one masterable item's computed state.
 type Item struct {
 	Name       string
@@ -48,6 +72,7 @@ type Item struct {
 	MaxRank    int
 	PartsOwned int
 	PartsTotal int
+	Parts      []Part // acquirable parts and whether you own each (for "missing")
 }
 
 // Summary counts items by state.
@@ -126,7 +151,13 @@ func Compute(masterable []wfdata.Item, inv *inventory.Inventory) Result {
 			it.Status = BuiltUnranked
 			res.Summary.BuiltUnranked++
 		} else {
-			ownedParts, total := countParts(m, inv)
+			it.Parts = itemParts(m, inv)
+			ownedParts, total := 0, len(it.Parts)
+			for _, p := range it.Parts {
+				if p.Owned() {
+					ownedParts++
+				}
+			}
 			it.PartsOwned, it.PartsTotal = ownedParts, total
 			switch {
 			case total > 0 && ownedParts >= total:
@@ -147,19 +178,19 @@ func Compute(masterable []wfdata.Item, inv *inventory.Inventory) Result {
 	return res
 }
 
-// countParts returns how many of an item's acquirable parts the player owns and
-// the total number of parts.
-func countParts(m wfdata.Item, inv *inventory.Inventory) (owned, total int) {
+// itemParts returns an item's acquirable parts (skipping bulk resources) with
+// whether the player owns each.
+func itemParts(m wfdata.Item, inv *inventory.Inventory) []Part {
+	var parts []Part
 	for _, c := range m.Components {
 		if !c.IsPart() {
 			continue // skip bulk resources (Orokin Cell, Forma, …)
 		}
-		total++
-		if inv.PartCount(m.Name+" "+c.Name) > 0 {
-			owned++
-		}
+		query := m.Name + " " + c.Name
+		need := max(c.ItemCount, 1)
+		parts = append(parts, Part{Query: query, Name: c.Name, Need: need, Have: inv.PartCount(query)})
 	}
-	return owned, total
+	return parts
 }
 
 // sortBestNext orders items by what's most worth doing next: built-but-unranked

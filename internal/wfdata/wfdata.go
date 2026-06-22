@@ -20,9 +20,13 @@ import (
 )
 
 // itemsURLVar returns just the fields we need. Components are included so the
-// mastery view can compute how many of an item's parts the player owns. It is a
-// var so tests can point it at a local server.
-var itemsURLVar = "https://api.warframestat.us/items/?only=uniqueName,name,masterable,productCategory,type,components"
+// mastery view can compute how many of an item's parts the player owns;
+// imageName drives item thumbnails. It is a var so tests can point it at a local
+// server.
+var itemsURLVar = "https://api.warframestat.us/items/?only=uniqueName,name,masterable,productCategory,type,components,imageName"
+
+// imageBase serves item images (redirects to the warframe-items CDN).
+const imageBase = "https://cdn.warframestat.us/img/"
 
 // Component is one ingredient of a buildable item's recipe.
 type Component struct {
@@ -45,13 +49,50 @@ type Item struct {
 	Masterable      bool        `json:"masterable"`
 	ProductCategory string      `json:"productCategory"`
 	Type            string      `json:"type"`
+	ImageName       string      `json:"imageName"`
 	Components      []Component `json:"components"`
 }
 
 // DB is a queryable item-metadata set.
 type DB struct {
 	byUnique map[string]Item
+	byName   map[string]Item // normalized display name -> item
 	all      []Item
+}
+
+// ImageURL returns the thumbnail URL for an internal item type, or "".
+func (d *DB) ImageURL(uniqueName string) string {
+	if d == nil {
+		return ""
+	}
+	if it, ok := d.byUnique[uniqueName]; ok && it.ImageName != "" {
+		return imageBase + it.ImageName
+	}
+	return ""
+}
+
+// ImageURLByName returns the thumbnail URL for a display name, or "".
+func (d *DB) ImageURLByName(name string) string {
+	if d == nil {
+		return ""
+	}
+	if it, ok := d.byName[normalizeName(name)]; ok && it.ImageName != "" {
+		return imageBase + it.ImageName
+	}
+	return ""
+}
+
+func normalizeName(s string) string {
+	var b []rune
+	for _, r := range s {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			b = append(b, r+32)
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b = append(b, r)
+		}
+	}
+	return string(b)
 }
 
 // Options configures Load.
@@ -86,10 +127,13 @@ func Load(opts Options) (*DB, error) {
 	if err := json.Unmarshal(raw, &items); err != nil {
 		return nil, fmt.Errorf("decode items: %w", err)
 	}
-	db := &DB{byUnique: make(map[string]Item, len(items)), all: items}
+	db := &DB{byUnique: make(map[string]Item, len(items)), byName: make(map[string]Item, len(items)), all: items}
 	for _, it := range items {
 		if it.UniqueName != "" {
 			db.byUnique[it.UniqueName] = it
+		}
+		if it.Name != "" {
+			db.byName[normalizeName(it.Name)] = it
 		}
 	}
 	opts.Logger.Info("item metadata loaded", "items", len(items))

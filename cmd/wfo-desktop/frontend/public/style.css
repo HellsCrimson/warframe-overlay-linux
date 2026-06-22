@@ -1,0 +1,47 @@
+:root {
+  --bg: #14151a; --panel: #1b1d24; --panel2: #23262f;
+  --fg: #e6e6ea; --dim: #80838d; --gold: #f2b134;
+  --green: #5fc7a0; --blue: #5c9bd6; --red: #e0815a;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+  font-family: "Inter", system-ui, sans-serif; font-size: 14px;
+  user-select: none; overflow: hidden;
+}
+#app { height: 100vh; }
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-thumb { background: #2c2f39; border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+input { font-family: inherit; }
+
+/* shared layout utilities */
+.head { display: flex; align-items: center; gap: 16px; }
+.head h1 { font-size: 24px; margin: 0; font-weight: 600; }
+.muted { color: var(--dim); font-size: 13px; }
+.btn { background: var(--gold); color: #10100a; border: none; padding: 8px 14px;
+  border-radius: 6px; font-weight: 600; cursor: pointer; }
+.btn.ghost { background: var(--panel2); color: var(--fg); }
+.btn.green { background: var(--green); color: #10100a; }
+.spacer { margin-left: auto; }
+.search { width: 100%; margin: 14px 0 6px; padding: 10px; background: var(--panel);
+  border: none; border-radius: 6px; color: var(--fg); outline: none; }
+.scroll { overflow-y: auto; flex: 1; min-height: 0; }
+.cat { color: var(--gold); font-weight: 700; margin: 16px 0 4px; }
+.row { display: flex; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 6px; }
+.row:hover { background: #191b22; }
+.thumb { width: 34px; height: 34px; object-fit: contain; flex-shrink: 0; }
+.thumb.ph { background: #20222a; border-radius: 4px; }
+.iname { flex: 1; min-width: 0; }
+.empty { color: var(--dim); margin: auto; text-align: center; }
+.cards { display: flex; gap: 14px; margin: 10px 0; flex-wrap: wrap; }
+.statcard { background: var(--panel); border-radius: 8px; padding: 12px 16px; min-width: 150px; }
+.statcard .lbl { color: var(--dim); font-size: 12px; }
+.statcard .val { font-size: 22px; font-weight: 600; margin-top: 2px; }
+.chips { display: flex; gap: 16px; flex-wrap: wrap; }
+.chip { font-size: 13px; }
+.badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; }
+.bar { background: var(--panel); border-radius: 8px; padding: 10px 12px; margin-top: 10px;
+  display: flex; align-items: center; gap: 12px; }
+.input { flex: 1; background: var(--bg); border: none; border-radius: 6px; padding: 9px;
+  color: var(--fg); outline: none; }
