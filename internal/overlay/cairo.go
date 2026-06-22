@@ -76,27 +76,41 @@ import (
 )
 
 // Label is one rendered price tag: the item name and its price string, the
-// horizontal center and top edge (in surface pixels) at which to draw it, and
-// whether it is the best pick.
+// horizontal center and top edge (in surface pixels) at which to draw it,
+// whether it is the best pick, and optional inventory ownership info.
 type Label struct {
 	Name    string
 	Price   string
 	CenterX int
 	Top     int
 	Best    bool
+
+	// OwnedKnown is true when inventory data is available; Owned is how many of
+	// this part the player already has (0 => a part they don't own yet).
+	OwnedKnown bool
+	Owned      int
 }
 
 // markup builds the Pango-markup string for a label: a small dim item name
-// above a large bold price (gold for the best pick) for fast scanning.
+// above a large bold price (gold for the best pick) for fast scanning, with an
+// optional ownership line (bright "NEW" when unowned, dim "owned ×N" otherwise).
 func (l Label) markup() string {
 	priceColor := "#ffffff"
 	if l.Best {
 		priceColor = "#ffd633"
 	}
-	return fmt.Sprintf(
+	m := fmt.Sprintf(
 		`<span size="11500" foreground="#c8c8d0">%s</span>`+"\n"+
 			`<span size="19000" weight="bold" foreground="%s">%s</span>`,
 		escapeMarkup(l.Name), priceColor, escapeMarkup(l.Price))
+	if l.OwnedKnown {
+		if l.Owned == 0 {
+			m += "\n" + `<span size="10500" weight="bold" foreground="#5fe38f">✦ NEW</span>`
+		} else {
+			m += "\n" + fmt.Sprintf(`<span size="10500" foreground="#9a9aa5">owned ×%d</span>`, l.Owned)
+		}
+	}
+	return m
 }
 
 func escapeMarkup(s string) string {

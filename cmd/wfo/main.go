@@ -18,6 +18,7 @@ import (
 	"warframe-overlay-linux/internal/config"
 	"warframe-overlay-linux/internal/db"
 	"warframe-overlay-linux/internal/hypr"
+	"warframe-overlay-linux/internal/inventory"
 	"warframe-overlay-linux/internal/items"
 	"warframe-overlay-linux/internal/logwatch"
 	"warframe-overlay-linux/internal/ocr"
@@ -32,6 +33,7 @@ func main() {
 	flag.StringVar(&cfg.CapturePNGDir, "dump", "", "directory to write captured frames as PNG for debugging")
 	flag.BoolVar(&cfg.NoOverlay, "no-overlay", false, "disable the on-screen overlay (stdout only)")
 	flag.DurationVar(&cfg.OverlayDuration, "overlay-duration", cfg.OverlayDuration, "how long the overlay stays up")
+	flag.BoolVar(&cfg.EnableInventory, "inventory", false, "decorate rewards with owned/NEW from your inventory (reads game memory; needs ptrace_scope=0 or CAP_SYS_PTRACE)")
 	verbose := flag.Bool("v", false, "verbose logging")
 	flag.Parse()
 
@@ -61,6 +63,13 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 
 	cap := capture.SelectBackend(ctx, hyprc, log)
 	log.Info("capture backend selected", "backend", cap.Name())
+
+	inv := &invProvider{enabled: cfg.EnableInventory, ttl: 5 * time.Minute, log: log}
+	if cfg.EnableInventory {
+		// Warm the inventory in the background so the first reward screen isn't
+		// delayed by the memory scan.
+		go inv.get(ctx)
+	}
 
 	events, err := logwatch.Watch(ctx, logwatch.Options{
 		Path:             cfg.EELogPath,
@@ -100,7 +109,7 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 					busy = false
 					inflight.Unlock()
 				}()
-				if err := pipeline(ctx, cfg, hyprc, cap, database, log); err != nil {
+				if err := pipeline(ctx, cfg, hyprc, cap, database, inv, log); err != nil {
 					log.Error("pipeline failed", "err", err)
 				}
 			}()
@@ -108,7 +117,7 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 }
 
-func pipeline(ctx context.Context, cfg config.Config, hyprc *hypr.Client, cap capture.Capturer, database *db.Database, log *slog.Logger) error {
+func pipeline(ctx context.Context, cfg config.Config, hyprc *hypr.Client, cap capture.Capturer, database *db.Database, inv *invProvider, log *slog.Logger) error {
 	pctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
@@ -146,10 +155,11 @@ func pipeline(ctx context.Context, cfg config.Config, hyprc *hypr.Client, cap ca
 	}
 
 	result := pricing.Evaluate(names, database)
-	printResult(result)
+	owned := inv.get(pctx) // nil unless -inventory and the scrape succeeded
+	printResult(result, owned)
 
 	if !cfg.NoOverlay {
-		labels := buildLabels(frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), result)
+		labels := buildLabels(frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), result, owned)
 		// Use the root ctx (not the capture-scoped pctx) so the overlay outlives
 		// this pipeline run; show it without blocking re-triggers.
 		go func() {
@@ -161,8 +171,9 @@ func pipeline(ctx context.Context, cfg config.Config, hyprc *hypr.Client, cap ca
 	return nil
 }
 
-// buildLabels positions one price label under each reward column.
-func buildLabels(w, h int, r pricing.Result) []overlay.Label {
+// buildLabels positions one price label under each reward column, decorated with
+// ownership info when inv is available.
+func buildLabels(w, h int, r pricing.Result, inv *inventory.Inventory) []overlay.Label {
 	cols := items.RewardColumns(w, h, len(r.Rewards))
 	labels := make([]overlay.Label, 0, len(r.Rewards))
 	for i, rw := range r.Rewards {
@@ -180,18 +191,23 @@ func buildLabels(w, h int, r pricing.Result) []overlay.Label {
 			value = "no match"
 		}
 		c := cols[i]
-		labels = append(labels, overlay.Label{
+		label := overlay.Label{
 			Name:    name,
 			Price:   value,
 			CenterX: (c.Min.X + c.Max.X) / 2,
 			Top:     c.Max.Y + 8,
 			Best:    i == r.BestIndex,
-		})
+		}
+		if inv != nil && rw.Item != nil {
+			label.OwnedKnown = true
+			label.Owned = inv.Owned(rw.Item.DropName)
+		}
+		labels = append(labels, label)
 	}
 	return labels
 }
 
-func printResult(r pricing.Result) {
+func printResult(r pricing.Result, inv *inventory.Inventory) {
 	fmt.Println("── Relic rewards ─────────────────────────")
 	for i, rw := range r.Rewards {
 		marker := "  "
@@ -202,7 +218,52 @@ func printResult(r pricing.Result) {
 		if rw.Item != nil {
 			name = rw.Item.DropName
 		}
-		fmt.Printf("%s%-34s %6.1f plat  %4d ducats\n", marker, name, rw.Plat(), rw.Ducats())
+		owned := ""
+		if inv != nil && rw.Item != nil {
+			if n := inv.Owned(rw.Item.DropName); n == 0 {
+				owned = "  NEW"
+			} else {
+				owned = fmt.Sprintf("  owned×%d", n)
+			}
+		}
+		fmt.Printf("%s%-34s %6.1f plat  %4d ducats%s\n", marker, name, rw.Plat(), rw.Ducats(), owned)
 	}
 	fmt.Println("──────────────────────────────────────────")
+}
+
+// invProvider lazily loads and caches the player inventory for the session. It
+// is safe for concurrent use and never blocks the pipeline for more than one
+// in-flight load.
+type invProvider struct {
+	enabled bool
+	ttl     time.Duration
+	log     *slog.Logger
+
+	mu     sync.Mutex
+	inv    *inventory.Inventory
+	loaded time.Time
+}
+
+// get returns the cached inventory, (re)loading it if stale. Returns nil when
+// disabled or when the load fails and no prior value is cached.
+func (p *invProvider) get(ctx context.Context) *inventory.Inventory {
+	if p == nil || !p.enabled {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.inv != nil && time.Since(p.loaded) < p.ttl {
+		return p.inv
+	}
+	loaded, err := inventory.Load(ctx)
+	if err != nil {
+		if p.inv == nil {
+			p.log.Warn("inventory unavailable", "err", err)
+		}
+		return p.inv // keep any stale value
+	}
+	p.inv = loaded
+	p.loaded = time.Now()
+	p.log.Info("inventory loaded", "parts", loaded.Len())
+	return p.inv
 }

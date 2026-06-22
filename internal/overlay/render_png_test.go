@@ -14,10 +14,10 @@ func TestRenderPNG(t *testing.T) {
 	stride := w * 4
 	buf := make([]byte, stride*h)
 	labels := []Label{
-		{Name: "Bronco Prime Receiver", Price: "12p · 15d", CenterX: 180, Top: 60, Best: false},
-		{Name: "Braton Prime Stock", Price: "8p · 25d", CenterX: 400, Top: 60, Best: false},
-		{Name: "Cobra & Crane Prime Hilt", Price: "45p · 45d", CenterX: 620, Top: 60, Best: true},
-		{Name: "Bronco Prime Blueprint", Price: "5p · 15d", CenterX: 840, Top: 60, Best: false},
+		{Name: "Bronco Prime Receiver", Price: "12p · 15d", CenterX: 180, Top: 50, Best: false, OwnedKnown: true, Owned: 2},
+		{Name: "Braton Prime Stock", Price: "8p · 25d", CenterX: 400, Top: 50, Best: false, OwnedKnown: true, Owned: 0},
+		{Name: "Cobra & Crane Prime Handle", Price: "45p · 45d", CenterX: 620, Top: 50, Best: true, OwnedKnown: true, Owned: 1},
+		{Name: "Bronco Prime Blueprint", Price: "5p · 15d", CenterX: 840, Top: 50, Best: false, OwnedKnown: true, Owned: 0},
 	}
 	draw(buf, w, h, stride, labels)
 
