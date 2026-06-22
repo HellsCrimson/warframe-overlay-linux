@@ -3,21 +3,24 @@ package inventory
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
 )
 
-// Inventory holds the player's owned prime-part counts, keyed by a normalized
-// token signature so reward display names ("Bronco Prime Receiver") resolve to
-// internal item types ("/Lotus/.../BroncoPrimeReceiver") despite word-order and
-// punctuation differences.
+// Inventory holds the player's owned prime-part counts (keyed by a normalized
+// token signature so reward display names resolve to internal item types despite
+// word-order and punctuation differences) plus structured owned-equipment
+// categories for the app's collection view.
 type Inventory struct {
-	owned map[string]int
+	owned      map[string]int
+	categories []Category
 }
 
 // invJSON is the slice of the inventory response we read: owned parts live in
-// MiscItems (weapon parts) and Recipes (blueprints).
+// MiscItems (weapon parts) and Recipes (blueprints); equipment lists are decoded
+// separately into the category fields.
 type invJSON struct {
 	MiscItems []invEntry `json:"MiscItems"`
 	Recipes   []invEntry `json:"Recipes"`
@@ -52,7 +55,21 @@ func Parse(raw []byte) (*Inventory, error) {
 	}
 	add(j.MiscItems)
 	add(j.Recipes)
+
+	// Structured equipment categories for the collection view.
+	var eq equipJSON
+	if err := json.Unmarshal(raw, &eq); err == nil {
+		inv.categories = buildCategories(eq)
+	}
 	return inv, nil
+}
+
+// Categories returns the owned equipment grouped by kind (Warframes, Primary, …).
+func (inv *Inventory) Categories() []Category {
+	if inv == nil {
+		return nil
+	}
+	return inv.categories
 }
 
 // Owned returns how many of the given reward (by display name) the player owns.
@@ -91,6 +108,16 @@ func keepAlnum(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// LoadFile parses a saved inventory JSON response (for development/offline use
+// when the game is not running).
+func LoadFile(path string) (*Inventory, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return Parse(raw)
 }
 
 // Load performs the full pipeline: find the game, scrape auth, fetch and parse

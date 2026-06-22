@@ -31,8 +31,11 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("parsed %d owned prime parts\n", inv.Len())
+		for _, c := range inv.Categories() {
+			fmt.Printf("  %-18s %d\n", c.Name, len(c.Items))
+		}
 		for _, name := range flag.Args() {
-			fmt.Printf("  %-36s owned=%d\n", name, inv.Owned(name))
+			fmt.Printf("  owned %-30s = %d\n", name, inv.Owned(name))
 		}
 		return
 	}
