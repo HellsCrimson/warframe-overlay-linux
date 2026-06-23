@@ -128,20 +128,20 @@ let items = $derived(
 }
 .csearch { background: var(--panel); border: none; border-radius: 8px; padding: 6px 10px; color: var(--fg); outline: none; min-width: 150px; }
 
-.grid.relics { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
-.card.relic { align-items: stretch; gap: 9px; padding: 11px 12px; cursor: pointer; }
-.rhead { display: flex; align-items: center; gap: 8px; }
-.era { flex: none; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; letter-spacing: 0.3px; }
-.rname { flex: 1; font-weight: 600; font-size: 14px; min-width: 0; }
-.rcount { color: var(--fg); font-weight: 600; font-size: 13px; }
-.rsub { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+.grid.relics { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+.card.relic { align-items: stretch; gap: 11px; padding: 14px 15px; cursor: pointer; }
+.rhead { display: flex; align-items: center; gap: 9px; }
+.era { flex: none; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.3px; }
+.rname { flex: 1; font-weight: 600; font-size: 15px; min-width: 0; }
+.rcount { color: var(--fg); font-weight: 600; font-size: 14px; }
+.rsub { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
 .refine { color: var(--dim); }
 .refine.radiant { color: var(--gold); font-weight: 600; }
 .rval { color: var(--gold); font-weight: 600; }
-.ricons { display: flex; flex-wrap: wrap; gap: 6px; }
-.ric { width: 34px; height: 34px; border-radius: 7px; background: #20222a; display: grid; place-items: center;
+.ricons { display: flex; flex-wrap: wrap; gap: 7px; }
+.ric { width: 42px; height: 42px; border-radius: 8px; background: #20222a; display: grid; place-items: center;
   border: 1.5px solid #34384400; box-shadow: inset 0 0 0 1.5px #34384400; }
-.ric img { width: 30px; height: 30px; object-fit: contain; }
+.ric img { width: 37px; height: 37px; object-fit: contain; }
 .ric img.dim { opacity: 0.45; }
 .ric .ph { width: 18px; height: 18px; border-radius: 4px; background: #2c2f39; }
 .ric.mastered { box-shadow: inset 0 0 0 2px var(--gold); }

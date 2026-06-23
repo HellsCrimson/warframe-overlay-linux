@@ -7,6 +7,7 @@ let view = $state(null);
 let hideNotStarted = $state(true);
 let sort = $state("next");       // next | cost | relics
 let search = $state("");
+let typeFilter = $state("All");  // friendly equipment type, or All
 let modalItem = $state(null);    // item whose crafting tree is open
 
 // Refetch when the sort mode changes (the backend does the ordering).
@@ -16,9 +17,20 @@ const statusColor = {
   "Mastered": "var(--gold)", "Built — rank up": "var(--gold)", "Ready to build": "var(--green)",
   "Collecting parts": "var(--blue)", "Not started": "#6a6d77",
 };
+// Map the game's productCategory codes to friendly equipment types for filtering.
+const typeNames = {
+  Suits: "Warframe", LongGuns: "Primary", Pistols: "Secondary", Melee: "Melee",
+  SpaceSuits: "Archwing", SpaceGuns: "Arch-Gun", SpaceMelee: "Arch-Melee",
+  Sentinels: "Companion", SentinelWeapons: "Companion Weapon",
+  KubrowPets: "Companion", MoaPets: "Companion", MechSuits: "Necramech",
+  OperatorAmps: "Amp", Hoverboards: "K-Drive",
+};
+function typeOf(cat) { return typeNames[cat] || "Other"; }
+let types = $derived(!view ? [] : [...new Set(view.items.map((it) => typeOf(it.category)))].sort());
 let items = $derived(
   !view ? [] : view.items.filter((it) =>
     (!hideNotStarted || it.status !== "Not started") &&
+    (typeFilter === "All" || typeOf(it.category) === typeFilter) &&
     (!search || it.name.toLowerCase().includes(search.toLowerCase())))
 );
 
@@ -62,6 +74,13 @@ function metric(it) {
         <option value="next">Best to do next</option>
         <option value="cost">Cheapest to build</option>
         <option value="relics">Farmable from my relics</option>
+      </select>
+    </label>
+    <label class="muted sortlabel">
+      Type
+      <select bind:value={typeFilter}>
+        <option value="All">All types</option>
+        {#each types as ty}<option value={ty}>{ty}</option>{/each}
       </select>
     </label>
     <input class="csearch" placeholder="Search…" bind:value={search} />

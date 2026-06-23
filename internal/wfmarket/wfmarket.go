@@ -34,9 +34,10 @@ const iconBase = "https://warframe.market/static/assets/"
 
 // marketItem holds the identifiers we need for an item.
 type marketItem struct {
-	ID    string
-	Slug  string
-	Thumb string
+	ID      string
+	Slug    string
+	Thumb   string
+	SubIcon string // component-type icon (e.g. sub_icons/warframe/prime_chassis…)
 }
 
 // Client talks to warframe.market.
@@ -60,8 +61,9 @@ type itemsResp struct {
 		Slug string `json:"slug"`
 		I18n struct {
 			En struct {
-				Name  string `json:"name"`
-				Thumb string `json:"thumb"`
+				Name    string `json:"name"`
+				Thumb   string `json:"thumb"`
+				SubIcon string `json:"subIcon"`
 			} `json:"en"`
 		} `json:"i18n"`
 	} `json:"data"`
@@ -88,7 +90,7 @@ func (c *Client) LoadItems() error {
 	idx := make(map[string]marketItem, len(resp.Data))
 	for _, it := range resp.Data {
 		if it.Slug != "" && it.I18n.En.Name != "" {
-			idx[normalize(it.I18n.En.Name)] = marketItem{ID: it.ID, Slug: it.Slug, Thumb: it.I18n.En.Thumb}
+			idx[normalize(it.I18n.En.Name)] = marketItem{ID: it.ID, Slug: it.Slug, Thumb: it.I18n.En.Thumb, SubIcon: it.I18n.En.SubIcon}
 		}
 	}
 	c.mu.Lock()
@@ -147,6 +149,18 @@ func (c *Client) IconURL(name string) string {
 	defer c.mu.Unlock()
 	if it, ok := c.itemByName[normalize(name)]; ok && it.Thumb != "" {
 		return iconBase + it.Thumb
+	}
+	return ""
+}
+
+// SubIconURL returns the component-type icon URL for an item display name (e.g.
+// the generic "prime_chassis"/"prime_barrel"/"blueprint" icon), or "". These are
+// the clean, readable per-component icons rather than the muddy per-item renders.
+func (c *Client) SubIconURL(name string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if it, ok := c.itemByName[normalize(name)]; ok && it.SubIcon != "" {
+		return iconBase + it.SubIcon
 	}
 	return ""
 }

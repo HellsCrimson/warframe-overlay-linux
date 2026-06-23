@@ -113,23 +113,25 @@ func leafName(names *wfdata.DB, parent wfdata.Item, c wfdata.Component) string {
 	return c.Name
 }
 
-// partIconURL resolves a distinct thumbnail for a part or resource by display
-// name. Equipment parts prefer warframe.market's per-part images (resolving the
-// market name via the price DB, since warframestat reuses one generic icon for
-// every "Blueprint"/"Barrel"/… component); resources use warframestat's images.
+// partIconURL resolves the icon for a part or resource by display name. Equipment
+// parts use warframe.market's component-type "subIcon" (the clean prime_chassis /
+// prime_barrel / blueprint icon); resources use warframestat's per-resource
+// images. warframe.market names warframe components WITH a "Blueprint" suffix
+// ("Ivara Prime Chassis Blueprint") but weapon parts without one ("Soma Prime
+// Barrel"); the price DB's DropName matches that convention, so it's tried first.
 func partIconURL(name string, resource bool, names *wfdata.DB, prices *db.Database, market *wfmarket.Client) string {
 	if !resource && market != nil {
-		mname := name
+		var cands []string
 		if prices != nil {
-			if it := prices.FindPart(name); it != nil && it.Name != "" {
-				mname = it.Name
+			if it := prices.FindPart(name); it != nil {
+				cands = append(cands, it.DropName, it.Name)
 			}
 		}
-		if u := market.IconURL(mname); u != "" {
-			return u
-		}
-		if u := market.IconURL(name); u != "" {
-			return u
+		cands = append(cands, name, name+" Blueprint")
+		for _, c := range cands {
+			if u := marketSubOrThumb(market, c); u != "" {
+				return u
+			}
 		}
 	}
 	if names != nil {
@@ -138,7 +140,7 @@ func partIconURL(name string, resource bool, names *wfdata.DB, prices *db.Databa
 		}
 	}
 	if market != nil {
-		if u := market.IconURL(name); u != "" {
+		if u := marketSubOrThumb(market, name); u != "" {
 			return u
 		}
 	}
@@ -150,13 +152,23 @@ func partIconURL(name string, resource bool, names *wfdata.DB, prices *db.Databa
 				return u
 			}
 		}
-		if market != nil {
-			if u := market.IconURL(base); u != "" {
-				return u
-			}
+		if u := marketSubOrThumb(market, base); u != "" {
+			return u
 		}
 	}
 	return ""
+}
+
+// marketSubOrThumb prefers the component-type subIcon, falling back to the
+// per-item thumbnail.
+func marketSubOrThumb(market *wfmarket.Client, name string) string {
+	if market == nil || name == "" {
+		return ""
+	}
+	if u := market.SubIconURL(name); u != "" {
+		return u
+	}
+	return market.IconURL(name)
 }
 
 // isResource reports whether a component is a bulk crafting resource rather than
