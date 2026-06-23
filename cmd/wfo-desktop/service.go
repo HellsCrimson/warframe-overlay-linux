@@ -306,7 +306,10 @@ func (s *Service) PartSellers(query string) []MarketSeller {
 	name := query
 	if prices != nil {
 		if item := prices.FindPart(query); item != nil {
-			name = item.DropName
+			// Use the plain part name: warframe.market lists components
+			// without the "Blueprint" suffix that DropName carries for
+			// warframe parts (relic-drop naming), so DropName misses the slug.
+			name = item.Name
 		}
 	}
 	orders, err := s.market.SellOrders(name, 12)
