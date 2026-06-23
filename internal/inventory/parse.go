@@ -16,6 +16,7 @@ import (
 type Inventory struct {
 	owned      map[string]int
 	parts      map[string]int // loose-signature part counts (for recipe matching)
+	byType     map[string]int // raw counts keyed by exact internal ItemType
 	masteryXP  map[string]int // lifetime affinity per item type (mastery source)
 	relics     map[string]int // owned void relics, by internal ItemType -> count
 	categories []Category
@@ -42,9 +43,14 @@ func Parse(raw []byte) (*Inventory, error) {
 	if err := json.Unmarshal(raw, &j); err != nil {
 		return nil, err
 	}
-	inv := &Inventory{owned: make(map[string]int), parts: make(map[string]int), relics: make(map[string]int)}
+	inv := &Inventory{owned: make(map[string]int), parts: make(map[string]int), byType: make(map[string]int), relics: make(map[string]int)}
 	add := func(entries []invEntry) {
 		for _, e := range entries {
+			// Raw count by exact type — covers resources and component blueprints
+			// that the Prime-only filter below drops (for the crafting tree).
+			if e.ItemType != "" {
+				inv.byType[e.ItemType] += e.ItemCount
+			}
 			// Void relics live in MiscItems too, keyed by their projection type
 			// (e.g. ".../Projections/T1VoidProjectionDBronze"). Record them by
 			// internal type so they can be matched to drop tables; they are not
@@ -130,6 +136,16 @@ func (inv *Inventory) Owned(displayName string) int {
 
 // Len reports how many distinct owned prime parts were parsed.
 func (inv *Inventory) Len() int { return len(inv.owned) }
+
+// CountByType returns how many of an exact internal item type the player owns
+// (resources, blueprints, component parts). Used by the crafting tree, where
+// recipe components are walked by their uniqueName.
+func (inv *Inventory) CountByType(uniqueName string) int {
+	if inv == nil {
+		return 0
+	}
+	return inv.byType[uniqueName]
+}
 
 // PartCount returns how many of a named prime part the player owns, matching
 // loosely so a build-recipe component resolves to the owned drop: it ignores

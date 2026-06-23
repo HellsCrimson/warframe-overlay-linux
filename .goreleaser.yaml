@@ -1,0 +1,63 @@
+# GoReleaser config for warframe-overlay-linux.
+# https://goreleaser.com
+#
+# cgo is mandatory: internal/ocr links tesseract/leptonica and internal/overlay
+# links pango/cairo, and the wfo-desktop binary links webkit2gtk. That rules out
+# cross-compilation, so we only build linux/amd64 on a matching runner with the
+# -dev packages installed (see .github/workflows/release.yml).
+version: 2
+
+before:
+  hooks:
+    - go mod download
+    # Regenerate the Wails bindings from the Go Service and build the embedded
+    # Svelte frontend, mirroring `make desktop`. The Go build below embeds
+    # cmd/wfo-desktop/frontend/dist via go:embed, so this must run first.
+    - sh -c "cd cmd/wfo-desktop && wails3 generate bindings -d ./frontend/bindings"
+    - sh -c "cd cmd/wfo-desktop/frontend && npm ci && npm run build"
+
+builds:
+  - id: wfo-desktop
+    main: ./cmd/wfo-desktop
+    binary: wfo-desktop
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+# GoReleaser creates the GitHub release automatically from the tag it is run on.
+release:
+  github:
+    owner: HellsCrimson
+    name: warframe-overlay-linux
+  draft: false
+  prerelease: auto

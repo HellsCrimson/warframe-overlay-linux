@@ -24,8 +24,8 @@ func TestAnnotateRelicScore(t *testing.T) {
 	it := mastery.Item{
 		Name: "Mesa Prime",
 		Parts: []mastery.Part{
-			{Query: "Mesa Prime Chassis", Need: 1, Have: 0},  // missing
-			{Query: "Mesa Prime Systems", Need: 1, Have: 0},  // missing
+			{Query: "Mesa Prime Chassis", Need: 1, Have: 0},   // missing
+			{Query: "Mesa Prime Systems", Need: 1, Have: 0},   // missing
 			{Query: "Mesa Prime Blueprint", Need: 1, Have: 1}, // owned, ignored
 		},
 	}

@@ -45,3 +45,35 @@ input { font-family: inherit; }
   display: flex; align-items: center; gap: 12px; }
 .input { flex: 1; background: var(--bg); border: none; border-radius: 6px; padding: 9px;
   color: var(--fg); outline: none; }
+
+/* responsive card grid (collection / mastery / inventory) */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 12px; padding: 4px 2px 18px; align-content: start; }
+.card { position: relative; background: var(--panel); border: 1px solid transparent;
+  border-radius: 10px; padding: 12px 10px 10px; display: flex; flex-direction: column;
+  align-items: center; gap: 7px; cursor: pointer; transition: border-color .12s, background .12s; }
+.card:hover { border-color: #3a3d49; background: #1f2128; }
+.card.owned { background: rgba(95,199,160,0.07); }
+.card.mastered { border-color: rgba(242,177,52,0.4); }
+.card .cthumb { width: 72px; height: 72px; object-fit: contain; }
+.card .cthumb.ph { background: #20222a; border-radius: 6px; }
+.card .cname { font-size: 13px; font-weight: 600; text-align: center; line-height: 1.25; }
+.card .cbadge { font-size: 11px; padding: 1px 8px; border-radius: 10px; margin-top: auto; }
+.card .dots { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; min-height: 8px; }
+.card .pdot { width: 8px; height: 8px; border-radius: 50%; background: #3a3d49; }
+.card .pdot.have { background: var(--green); }
+.card .star { position: absolute; top: 7px; right: 9px; color: var(--gold); font-size: 14px; line-height: 1; }
+
+/* modal (crafting tree) */
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal { background: var(--panel); border-radius: 12px; width: min(720px, 92vw);
+  max-height: 88vh; display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.5); }
+.modal-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px;
+  border-bottom: 1px solid #2a2d37; }
+.modal-head h2 { margin: 0; font-size: 18px; font-weight: 600; flex: 1; }
+.modal-body { padding: 12px 18px; overflow-y: auto; }
+.modal-foot { padding: 12px 18px; border-top: 1px solid #2a2d37; }
+.xbtn { background: var(--panel2); color: var(--fg); border: none; width: 28px; height: 28px;
+  border-radius: 6px; cursor: pointer; font-size: 16px; line-height: 1; }

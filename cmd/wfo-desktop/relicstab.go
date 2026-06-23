@@ -12,12 +12,16 @@ const (
 // RelicReward is one possible drop from a relic, valued and flagged with whether
 // the player already owns it.
 type RelicReward struct {
-	Part   string  `json:"part"`
-	Rarity string  `json:"rarity"` // Common | Uncommon | Rare
-	Chance float64 `json:"chance"` // drop chance in percent
-	Plat   int     `json:"plat"`   // warframe.market value of the part
-	Ducats int     `json:"ducats"`
-	Owned  int     `json:"owned"` // how many of this part the player already has
+	Part     string  `json:"part"`
+	Rarity   string  `json:"rarity"` // Common | Uncommon | Rare
+	Chance   float64 `json:"chance"` // drop chance in percent
+	Plat     int     `json:"plat"`   // warframe.market value of the part
+	Ducats   int     `json:"ducats"`
+	Owned    int     `json:"owned"`    // how many of this part the player already has
+	Mastered bool    `json:"mastered"` // the part's prime set is mastered
+	Crafted  bool    `json:"crafted"`  // a copy of the set is built/owned
+	SetName  string  `json:"setName"`  // the prime set this part belongs to
+	Icon     string  `json:"icon"`     // thumbnail URL for the part
 }
 
 // RelicRow is one owned relic variant with its drop table.
@@ -42,11 +46,13 @@ type RelicsView struct {
 // per crack. sortMode is "era" (default), "value" or "count".
 func (s *Service) GetRelics(sortMode string) RelicsView {
 	s.mu.Lock()
-	inv, prices, tables := s.inv, s.prices, s.relics
+	inv, prices, tables, names := s.inv, s.prices, s.relics, s.names
 	s.mu.Unlock()
 	if inv == nil || tables == nil {
 		return RelicsView{}
 	}
+
+	setIdx := s.setIndex()
 
 	var view RelicsView
 	for unique, count := range inv.Relics() {
@@ -64,6 +70,14 @@ func (s *Service) GetRelics(sortMode string) RelicsView {
 		var expected float64
 		for _, rw := range rel.Rewards {
 			rr := RelicReward{Part: rw.Part, Rarity: rw.Rarity, Chance: rw.Chance, Owned: inv.Owned(rw.Part)}
+			if e, ok := setIdx[partKey(rw.Part)]; ok {
+				rr.Mastered, rr.Crafted, rr.SetName = e.Mastered, e.Crafted, e.SetName
+			}
+			if icon := s.market.IconURL(rw.Part); icon != "" {
+				rr.Icon = icon
+			} else if names != nil {
+				rr.Icon = names.ImageURLByName(rw.Part)
+			}
 			if prices != nil {
 				if item := prices.FindPart(rw.Part); item != nil {
 					rr.Plat = int(item.Platinum + 0.5)

@@ -1,0 +1,131 @@
+package main
+
+import (
+	"warframe-overlay-linux/internal/inventory"
+	"warframe-overlay-linux/internal/wfdata"
+)
+
+// maxCraftDepth caps the recipe recursion. Real recipes are shallow (item →
+// component blueprints → raw resources); the cap is a safety net against any
+// pathological self-referential data.
+const maxCraftDepth = 5
+
+// CraftNode is one node of an item's crafting tree: the target item at the root,
+// its recipe components as children, and (for buildable components) their own
+// recipes nested beneath. Need is the total quantity required at this position
+// (parent need × recipe count); Have is how many the player owns.
+type CraftNode struct {
+	Name       string      `json:"name"`
+	Icon       string      `json:"icon"`
+	Need       int         `json:"need"`
+	Have       int         `json:"have"`
+	Enough     bool        `json:"enough"`     // Have >= Need
+	IsResource bool        `json:"isResource"` // bulk resource vs. an acquirable part
+	Children   []CraftNode `json:"children"`
+}
+
+// GetCraftingTree returns the recipe tree for the named item: each component
+// with how many the recipe needs and how many the player owns, recursing into
+// buildable components (e.g. Excalibur → Chassis blueprint → Ferrite/Rubedo).
+// Resource drop-locations and build times are intentionally not included.
+func (s *Service) GetCraftingTree(itemName string) CraftNode {
+	s.mu.Lock()
+	inv, names := s.inv, s.names
+	s.mu.Unlock()
+	if names == nil {
+		return CraftNode{Name: itemName}
+	}
+	root, ok := names.ByName(itemName)
+	if !ok {
+		return CraftNode{Name: itemName}
+	}
+	return buildCraftNode(names, inv, root, 1, 0)
+}
+
+// buildCraftNode constructs the node for an item needed `need` times, recursing
+// into buildable components that the player still needs.
+func buildCraftNode(names *wfdata.DB, inv *inventory.Inventory, it wfdata.Item, need, depth int) CraftNode {
+	icon := names.ImageURL(it.UniqueName)
+	if icon == "" {
+		icon = names.ImageURLByName(it.Name)
+	}
+	n := CraftNode{Name: it.Name, Icon: icon, Need: need}
+	n.Have = inv.CountByType(it.UniqueName)
+	n.Enough = n.Have >= n.Need
+
+	for _, c := range it.Components {
+		childNeed := need * maxInt(c.ItemCount, 1)
+		have := componentHave(inv, it, c)
+		// Recurse only into a buildable sub-component the player still needs.
+		// Base resources (Orokin Cell, Morphics, …) also carry a craft recipe in
+		// the dataset, but once the player owns enough we show them as a satisfied
+		// leaf rather than expanding how to farm-craft them.
+		if sub, ok := names.ByUnique(c.UniqueName); ok && len(sub.Components) > 0 && have < childNeed && depth+1 < maxCraftDepth {
+			n.Children = append(n.Children, buildCraftNode(names, inv, sub, childNeed, depth+1))
+			continue
+		}
+		leaf := CraftNode{
+			Name:       leafName(names, it, c),
+			Icon:       leafIcon(names, c),
+			Need:       childNeed,
+			Have:       have,
+			Enough:     have >= childNeed,
+			IsResource: isResource(inv, c),
+		}
+		n.Children = append(n.Children, leaf)
+	}
+	return n
+}
+
+// componentHave counts how many of a component the player owns. Resources and
+// directly-typed items match by exact internal type; prime parts (whose owned
+// "…Blueprint" type differs from the recipe's component type) match loosely by
+// name, as the mastery view does. The larger of the two wins.
+func componentHave(inv *inventory.Inventory, parent wfdata.Item, c wfdata.Component) int {
+	have := inv.CountByType(c.UniqueName)
+	if c.IsPart() {
+		if pc := inv.PartCount(parent.Name + " " + c.Name); pc > have {
+			have = pc
+		}
+	}
+	return have
+}
+
+// leafName names a leaf component, preferring the component item's own canonical
+// name; for unresolved equipment parts it qualifies by the parent ("Mesa Prime"
+// + "Chassis"), and resources keep their bare name ("Ferrite").
+func leafName(names *wfdata.DB, parent wfdata.Item, c wfdata.Component) string {
+	if it, ok := names.ByUnique(c.UniqueName); ok && it.Name != "" {
+		return it.Name
+	}
+	if c.IsPart() {
+		return parent.Name + " " + c.Name
+	}
+	return c.Name
+}
+
+func leafIcon(names *wfdata.DB, c wfdata.Component) string {
+	if icon := names.ImageURL(c.UniqueName); icon != "" {
+		return icon
+	}
+	if it, ok := names.ByUnique(c.UniqueName); ok {
+		return names.ImageURLByName(it.Name)
+	}
+	return ""
+}
+
+// isResource reports whether a component is a bulk crafting resource rather than
+// an acquirable equipment part. The path heuristic misses a few resources that
+// live outside /Types/Items/ (Orokin Cell, Neurodes, Morphics), so a component
+// the player owns by exact internal type is also treated as a resource (prime
+// parts never match by exact type).
+func isResource(inv *inventory.Inventory, c wfdata.Component) bool {
+	return !c.IsPart() || inv.CountByType(c.UniqueName) > 0
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}

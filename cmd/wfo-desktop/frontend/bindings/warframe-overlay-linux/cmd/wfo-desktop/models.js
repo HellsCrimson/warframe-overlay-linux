@@ -99,6 +99,88 @@ export class Analytics {
 }
 
 /**
+ * CraftNode is one node of an item's crafting tree: the target item at the root,
+ * its recipe components as children, and (for buildable components) their own
+ * recipes nested beneath. Need is the total quantity required at this position
+ * (parent need × recipe count); Have is how many the player owns.
+ */
+export class CraftNode {
+    /**
+     * Creates a new CraftNode instance.
+     * @param {Partial<CraftNode>} [$$source = {}] - The source object to create the CraftNode.
+     */
+    constructor($$source = {}) {
+        if (!("name" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["name"] = "";
+        }
+        if (!("icon" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["icon"] = "";
+        }
+        if (!("need" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["need"] = 0;
+        }
+        if (!("have" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["have"] = 0;
+        }
+        if (!("enough" in $$source)) {
+            /**
+             * Have >= Need
+             * @member
+             * @type {boolean}
+             */
+            this["enough"] = false;
+        }
+        if (!("isResource" in $$source)) {
+            /**
+             * bulk resource vs. an acquirable part
+             * @member
+             * @type {boolean}
+             */
+            this["isResource"] = false;
+        }
+        if (!("children" in $$source)) {
+            /**
+             * @member
+             * @type {CraftNode[]}
+             */
+            this["children"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CraftNode instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {CraftNode}
+     */
+    static createFrom($$source = {}) {
+        const $$createField6_0 = $$createType4;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("children" in $$parsedSource) {
+            $$parsedSource["children"] = $$createField6_0($$parsedSource["children"]);
+        }
+        return new CraftNode(/** @type {Partial<CraftNode>} */($$parsedSource));
+    }
+}
+
+/**
  * InvCategory groups inventory items.
  */
 export class InvCategory {
@@ -131,7 +213,7 @@ export class InvCategory {
      * @returns {InvCategory}
      */
     static createFrom($$source = {}) {
-        const $$createField1_0 = $$createType4;
+        const $$createField1_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("items" in $$parsedSource) {
             $$parsedSource["items"] = $$createField1_0($$parsedSource["items"]);
@@ -427,6 +509,14 @@ export class MasteryItem {
              */
             this["maxRank"] = 0;
         }
+        if (!("owned" in $$source)) {
+            /**
+             * a copy is currently in the inventory
+             * @member
+             * @type {boolean}
+             */
+            this["owned"] = false;
+        }
         if (!("partsOwned" in $$source)) {
             /**
              * @member
@@ -506,10 +596,10 @@ export class MasteryItem {
      * @returns {MasteryItem}
      */
     static createFrom($$source = {}) {
-        const $$createField7_0 = $$createType6;
+        const $$createField8_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("parts" in $$parsedSource) {
-            $$parsedSource["parts"] = $$createField7_0($$parsedSource["parts"]);
+            $$parsedSource["parts"] = $$createField8_0($$parsedSource["parts"]);
         }
         return new MasteryItem(/** @type {Partial<MasteryItem>} */($$parsedSource));
     }
@@ -662,8 +752,8 @@ export class MasteryView {
      * @returns {MasteryView}
      */
     static createFrom($$source = {}) {
-        const $$createField0_0 = $$createType7;
-        const $$createField1_0 = $$createType9;
+        const $$createField0_0 = $$createType9;
+        const $$createField1_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("summary" in $$parsedSource) {
             $$parsedSource["summary"] = $$createField0_0($$parsedSource["summary"]);
@@ -730,6 +820,38 @@ export class RelicReward {
              * @type {number}
              */
             this["owned"] = 0;
+        }
+        if (!("mastered" in $$source)) {
+            /**
+             * the part's prime set is mastered
+             * @member
+             * @type {boolean}
+             */
+            this["mastered"] = false;
+        }
+        if (!("crafted" in $$source)) {
+            /**
+             * a copy of the set is built/owned
+             * @member
+             * @type {boolean}
+             */
+            this["crafted"] = false;
+        }
+        if (!("setName" in $$source)) {
+            /**
+             * the prime set this part belongs to
+             * @member
+             * @type {string}
+             */
+            this["setName"] = "";
+        }
+        if (!("icon" in $$source)) {
+            /**
+             * thumbnail URL for the part
+             * @member
+             * @type {string}
+             */
+            this["icon"] = "";
         }
 
         Object.assign(this, $$source);
@@ -811,7 +933,7 @@ export class RelicRow {
      * @returns {RelicRow}
      */
     static createFrom($$source = {}) {
-        const $$createField5_0 = $$createType11;
+        const $$createField5_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("rewards" in $$parsedSource) {
             $$parsedSource["rewards"] = $$createField5_0($$parsedSource["rewards"]);
@@ -862,7 +984,7 @@ export class RelicsView {
      * @returns {RelicsView}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType13;
+        const $$createField2_0 = $$createType15;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("items" in $$parsedSource) {
             $$parsedSource["items"] = $$createField2_0($$parsedSource["items"]);
@@ -987,14 +1109,16 @@ export class TradeRow {
 const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = TradeRow.createFrom;
 const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = InvItem.createFrom;
+const $$createType3 = CraftNode.createFrom;
 const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = MasteryPart.createFrom;
+const $$createType5 = InvItem.createFrom;
 const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = MasterySummary.createFrom;
-const $$createType8 = MasteryItem.createFrom;
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = RelicReward.createFrom;
+const $$createType7 = MasteryPart.createFrom;
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = MasterySummary.createFrom;
+const $$createType10 = MasteryItem.createFrom;
 const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = RelicRow.createFrom;
+const $$createType12 = RelicReward.createFrom;
 const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = RelicRow.createFrom;
+const $$createType15 = $Create.Array($$createType14);

@@ -14,8 +14,14 @@ desktop-frontend:
 	cd $(DESKTOP_DIR) && wails3 generate bindings -d ./frontend/bindings
 	cd $(DESKTOP_DIR)/frontend && npm install && npm run build
 
-desktop: desktop-frontend
-	$(GO) build -o build/wfo-desktop ./$(DESKTOP_DIR)
+# Build the desktop binary through GoReleaser (no release/publish). This reuses
+# the same pipeline as the release workflow — the `before` hooks in
+# .goreleaser.yaml regenerate the bindings and build the embedded frontend, so
+# this does NOT depend on desktop-frontend. --single-target builds only for the
+# host platform; -o copies the binary to the usual build/ path.
+desktop:
+	@mkdir -p build
+	goreleaser build --snapshot --clean --single-target --id wfo-desktop -o build/wfo-desktop
 
 # Run the desktop app. Pass INV to load a saved inventory (dev, no game needed):
 #   make run-desktop INV=dump/inventory.json
@@ -38,4 +44,4 @@ fmt:
 	gofmt -w ./cmd ./internal
 
 clean:
-	rm -rf build
+	rm -rf build dist

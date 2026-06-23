@@ -27,13 +27,27 @@ export function GetAnalytics() {
 }
 
 /**
+ * GetCraftingTree returns the recipe tree for the named item: each component
+ * with how many the recipe needs and how many the player owns, recursing into
+ * buildable components (e.g. Excalibur → Chassis blueprint → Ferrite/Rubedo).
+ * Resource drop-locations and build times are intentionally not included.
+ * @param {string} itemName
+ * @returns {$CancellablePromise<$models.CraftNode>}
+ */
+export function GetCraftingTree(itemName) {
+    return $Call.ByID(1111094725, itemName).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
+}
+
+/**
  * GetInventory returns owned equipment grouped by category with names, ranks and
  * thumbnails.
  * @returns {$CancellablePromise<$models.InvCategory[]>}
  */
 export function GetInventory() {
     return $Call.ByID(1453675977).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType2($result);
+        return $$createType3($result);
     }));
 }
 
@@ -46,7 +60,7 @@ export function GetInventory() {
  */
 export function GetMastery(sortMode) {
     return $Call.ByID(4196764460, sortMode).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType3($result);
+        return $$createType4($result);
     }));
 }
 
@@ -59,7 +73,7 @@ export function GetMastery(sortMode) {
  */
 export function GetRelics(sortMode) {
     return $Call.ByID(2917727547, sortMode).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType4($result);
+        return $$createType5($result);
     }));
 }
 
@@ -69,7 +83,7 @@ export function GetRelics(sortMode) {
  */
 export function GetSellable() {
     return $Call.ByID(340323687).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType6($result);
+        return $$createType7($result);
     }));
 }
 
@@ -80,7 +94,7 @@ export function GetSellable() {
  */
 export function ListOnMarket(names) {
     return $Call.ByID(3721823692, names).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType7($result);
+        return $$createType8($result);
     }));
 }
 
@@ -91,7 +105,7 @@ export function ListOnMarket(names) {
  */
 export function LoadInventory() {
     return $Call.ByID(1450154683).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType8($result);
+        return $$createType9($result);
     }));
 }
 
@@ -103,7 +117,7 @@ export function LoadInventory() {
  */
 export function MarketLogin(email, password) {
     return $Call.ByID(996785430, email, password).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType9($result);
+        return $$createType10($result);
     }));
 }
 
@@ -119,7 +133,7 @@ export function MarketLogout() {
  */
 export function MarketStatus() {
     return $Call.ByID(1682935395).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType9($result);
+        return $$createType10($result);
     }));
 }
 
@@ -131,7 +145,7 @@ export function MarketStatus() {
  */
 export function PartSellers(query) {
     return $Call.ByID(1999966532, query).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType11($result);
+        return $$createType12($result);
     }));
 }
 
@@ -146,14 +160,15 @@ export function RefreshLivePrices(names) {
 
 // Private type creation functions
 const $$createType0 = $models.Analytics.createFrom;
-const $$createType1 = $models.InvCategory.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = $models.MasteryView.createFrom;
-const $$createType4 = $models.RelicsView.createFrom;
-const $$createType5 = $models.SellItem.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = $models.ListResult.createFrom;
-const $$createType8 = $models.LoadStatus.createFrom;
-const $$createType9 = $models.MarketStatus.createFrom;
-const $$createType10 = $models.MarketSeller.createFrom;
-const $$createType11 = $Create.Array($$createType10);
+const $$createType1 = $models.CraftNode.createFrom;
+const $$createType2 = $models.InvCategory.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = $models.MasteryView.createFrom;
+const $$createType5 = $models.RelicsView.createFrom;
+const $$createType6 = $models.SellItem.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = $models.ListResult.createFrom;
+const $$createType9 = $models.LoadStatus.createFrom;
+const $$createType10 = $models.MarketStatus.createFrom;
+const $$createType11 = $models.MarketSeller.createFrom;
+const $$createType12 = $Create.Array($$createType11);

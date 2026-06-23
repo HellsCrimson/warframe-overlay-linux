@@ -127,6 +127,15 @@ func Load(opts Options) (*DB, error) {
 	if err := json.Unmarshal(raw, &items); err != nil {
 		return nil, fmt.Errorf("decode items: %w", err)
 	}
+	db := New(items)
+	opts.Logger.Info("item metadata loaded", "items", len(items))
+	return db, nil
+}
+
+// New builds a queryable DB from a slice of items (indexing by unique name and
+// normalized display name). Exposed so callers/tests can construct a DB without
+// the network.
+func New(items []Item) *DB {
 	db := &DB{byUnique: make(map[string]Item, len(items)), byName: make(map[string]Item, len(items)), all: items}
 	for _, it := range items {
 		if it.UniqueName != "" {
@@ -136,8 +145,27 @@ func Load(opts Options) (*DB, error) {
 			db.byName[normalizeName(it.Name)] = it
 		}
 	}
-	opts.Logger.Info("item metadata loaded", "items", len(items))
-	return db, nil
+	return db
+}
+
+// ByUnique returns the item with the given internal type, and whether it was
+// found. Used to walk a recipe's components into their own sub-recipes.
+func (d *DB) ByUnique(uniqueName string) (Item, bool) {
+	if d == nil {
+		return Item{}, false
+	}
+	it, ok := d.byUnique[uniqueName]
+	return it, ok
+}
+
+// ByName returns the item with the given display name (case/punctuation
+// insensitive), and whether it was found.
+func (d *DB) ByName(name string) (Item, bool) {
+	if d == nil {
+		return Item{}, false
+	}
+	it, ok := d.byName[normalizeName(name)]
+	return it, ok
 }
 
 // Name returns the canonical display name for an internal item type, and whether

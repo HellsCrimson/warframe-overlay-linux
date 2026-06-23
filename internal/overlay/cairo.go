@@ -89,6 +89,20 @@ type Label struct {
 	// this part the player already has (0 => a part they don't own yet).
 	OwnedKnown bool
 	Owned      int
+
+	// Mastered/Crafted reflect the reward's parent prime set: Mastered when the
+	// item is ranked to mastery, Crafted when a copy is built/owned. SetName and
+	// SetParts list the rest of the set and which parts the player owns.
+	Mastered bool
+	Crafted  bool
+	SetName  string
+	SetParts []SetPart
+}
+
+// SetPart is one sibling part of a reward's prime set and whether it's owned.
+type SetPart struct {
+	Name  string
+	Owned bool
 }
 
 // markup builds the Pango-markup string for a label: a small dim item name
@@ -103,14 +117,39 @@ func (l Label) markup() string {
 		`<span size="11500" foreground="#c8c8d0">%s</span>`+"\n"+
 			`<span size="19000" weight="bold" foreground="%s">%s</span>`,
 		escapeMarkup(l.Name), priceColor, escapeMarkup(l.Price))
-	if l.OwnedKnown {
-		if l.Owned == 0 {
-			m += "\n" + `<span size="10500" weight="bold" foreground="#5fe38f">✦ NEW</span>`
-		} else {
-			m += "\n" + fmt.Sprintf(`<span size="10500" foreground="#9a9aa5">owned ×%d</span>`, l.Owned)
+	// Mastery/craft/ownership status line.
+	switch {
+	case l.Mastered:
+		m += "\n" + `<span size="10500" weight="bold" foreground="#5fc7a0">✓ Mastered</span>`
+	case l.Crafted:
+		m += "\n" + `<span size="10500" weight="bold" foreground="#5c9bd6">✓ Crafted</span>`
+	case l.OwnedKnown && l.Owned == 0:
+		m += "\n" + `<span size="10500" weight="bold" foreground="#5fe38f">✦ NEW</span>`
+	case l.OwnedKnown:
+		m += "\n" + fmt.Sprintf(`<span size="10500" foreground="#9a9aa5">owned ×%d</span>`, l.Owned)
+	}
+	// Prime-set checklist: the rest of the set with a ✓ for owned parts.
+	if l.SetName != "" && len(l.SetParts) > 0 {
+		m += "\n" + fmt.Sprintf(`<span size="9500" foreground="#7a7d87">%s set</span>`, escapeMarkup(l.SetName))
+		for _, p := range l.SetParts {
+			mark, color := "·", "#7a7d87"
+			if p.Owned {
+				mark, color = "✓", "#5fc7a0"
+			}
+			m += "\n" + fmt.Sprintf(`<span size="9500" foreground="%s">%s %s</span>`,
+				color, mark, escapeMarkup(shortPart(p.Name, l.SetName)))
 		}
 	}
 	return m
+}
+
+// shortPart strips the set-name prefix from a part name so the checklist reads
+// compactly ("Mesa Prime Chassis" → "Chassis" under the "Mesa Prime" header).
+func shortPart(name, setName string) string {
+	if setName != "" && strings.HasPrefix(name, setName+" ") {
+		return name[len(setName)+1:]
+	}
+	return name
 }
 
 func escapeMarkup(s string) string {

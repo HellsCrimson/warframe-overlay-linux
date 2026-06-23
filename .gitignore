@@ -5,3 +5,4 @@ dump
 # Wails desktop frontend (npm deps; bindings/dist are generated build output)
 cmd/wfo-desktop/frontend/node_modules
 cmd/wfo-desktop/bin
+dist

@@ -67,8 +67,17 @@ function pick(r) { const k = key(r); selected = selected === k ? "" : k; }
           {#each r.rewards as rw}
             <div class="rw">
               <span class="dot" style="background:{rarityColor[rw.rarity] || '#777'}" title={rw.rarity}></span>
-              <span class="rname" class:owned={rw.owned > 0}>{rw.part}</span>
-              {#if rw.owned > 0}<span class="have" title="you own {rw.owned}">✓{rw.owned > 1 ? ' ×' + rw.owned : ''}</span>{/if}
+              {#if rw.icon}<img class="rwimg" class:dim={!(rw.mastered || rw.crafted || rw.owned > 0)} src={rw.icon} alt="" loading="lazy" />{/if}
+              <span class="rname" class:done={rw.mastered || rw.crafted || rw.owned > 0}>{rw.part}</span>
+              {#if rw.mastered}
+                <span class="tag mastered" title="set mastered">★ Mastered</span>
+              {:else if rw.crafted}
+                <span class="tag crafted" title="set built/owned">✓ Crafted</span>
+              {:else if rw.owned > 0}
+                <span class="tag owned" title="you own {rw.owned}">✓ Owned{rw.owned > 1 ? ' ×' + rw.owned : ''}</span>
+              {:else}
+                <span class="tag new">✦ New</span>
+              {/if}
               <span class="muted chance">{rw.chance}%</span>
               <span class="val">{rw.plat ? rw.plat + 'p' : '—'}{#if rw.ducats} · {rw.ducats}d{/if}</span>
             </div>
@@ -101,9 +110,15 @@ function pick(r) { const k = key(r); selected = selected === k ? "" : k; }
 }
 .rw { display: flex; align-items: center; gap: 10px; font-size: 13px; }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.rwimg { width: 26px; height: 26px; object-fit: contain; flex: none; }
+.rwimg.dim { opacity: 0.4; }
 .rw .rname { min-width: 0; }
-.rw .rname.owned { color: var(--green); }
-.rw .have { color: var(--green); font-size: 12px; font-weight: 600; }
+.rw .rname.done { color: var(--green); }
+.tag { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 9px; white-space: nowrap; }
+.tag.mastered { color: var(--gold); background: rgba(242,177,52,0.14); }
+.tag.crafted { color: var(--blue); background: rgba(92,155,214,0.14); }
+.tag.owned { color: var(--green); background: rgba(95,199,160,0.14); }
+.tag.new { color: #6a6d77; background: rgba(255,255,255,0.04); }
 .rw .chance { margin-left: auto; min-width: 44px; text-align: right; }
 .rw .val { min-width: 70px; text-align: right; color: var(--gold); }
 </style>

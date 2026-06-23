@@ -46,6 +46,25 @@ type Service struct {
 	tradeStore *trades.Store
 	livePrices map[string]int
 	invErr     string
+
+	// setIdx memoizes the part→prime-set index, rebuilt when the inventory or
+	// item metadata is (re)loaded.
+	setIdx      setIndex
+	setIdxInv   *inventory.Inventory
+	setIdxNames *wfdata.DB
+}
+
+// setIndex returns the memoized part→set index, rebuilding it when the inventory
+// or item metadata has changed since the last build.
+func (s *Service) setIndex() setIndex {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.setIdx != nil && s.inv == s.setIdxInv && s.names == s.setIdxNames {
+		return s.setIdx
+	}
+	s.setIdx = buildSetIndex(s.names, s.inv)
+	s.setIdxInv, s.setIdxNames = s.inv, s.names
+	return s.setIdx
 }
 
 // NewService constructs the service and kicks off background data loads,
@@ -119,14 +138,21 @@ func (s *Service) runOverlay() {
 		CacheDir:         s.cfg.CacheDir,
 		DataTTL:          s.cfg.DataTTL,
 		Logger:           s.log,
-		Owned: func(dropName string) (int, bool) {
+		Enrich: func(dropName string) relicoverlay.RewardInfo {
 			s.mu.Lock()
 			inv := s.inv
 			s.mu.Unlock()
 			if inv == nil {
-				return 0, false
+				return relicoverlay.RewardInfo{}
 			}
-			return inv.Owned(dropName), true
+			info := relicoverlay.RewardInfo{Owned: inv.Owned(dropName), OwnedKnown: true}
+			if e, ok := s.setIndex()[partKey(dropName)]; ok {
+				info.Mastered, info.Crafted, info.SetName = e.Mastered, e.Crafted, e.SetName
+				for _, p := range e.Parts {
+					info.SetParts = append(info.SetParts, relicoverlay.SetPart{Name: p.Name, Owned: p.Owned})
+				}
+			}
+			return info
 		},
 	})
 	if err != nil {
@@ -234,6 +260,7 @@ type MasteryItem struct {
 	Status     string        `json:"status"` // "Mastered" etc (display string)
 	Rank       int           `json:"rank"`
 	MaxRank    int           `json:"maxRank"`
+	Owned      bool          `json:"owned"` // a copy is currently in the inventory
 	PartsOwned int           `json:"partsOwned"`
 	PartsTotal int           `json:"partsTotal"`
 	Parts      []MasteryPart `json:"parts"` // per-component detail (collecting items)
@@ -275,7 +302,7 @@ func (s *Service) GetMastery(sortMode string) MasteryView {
 		}
 		mi := MasteryItem{
 			Name: it.Name, Category: it.Category, Status: it.Status.String(),
-			Rank: it.Rank, MaxRank: it.MaxRank,
+			Rank: it.Rank, MaxRank: it.MaxRank, Owned: it.Owned,
 			PartsOwned: it.PartsOwned, PartsTotal: it.PartsTotal,
 			Parts: parts,
 			Icon:  names.ImageURLByName(it.Name),
@@ -283,6 +310,15 @@ func (s *Service) GetMastery(sortMode string) MasteryView {
 		view.Items = append(view.Items, annotate(it, mi, prices, idx))
 	}
 	sortMastery(view.Items, sortMode)
+	// Append already-mastered items so the tab is a full collection view. They
+	// stay last (after the actionable, sorted items) in every sort mode.
+	for _, it := range res.Mastered {
+		view.Items = append(view.Items, MasteryItem{
+			Name: it.Name, Category: it.Category, Status: it.Status.String(),
+			Rank: it.Rank, MaxRank: it.MaxRank, Owned: it.Owned,
+			Icon: names.ImageURLByName(it.Name),
+		})
+	}
 	return view
 }
 

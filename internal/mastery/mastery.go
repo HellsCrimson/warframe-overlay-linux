@@ -70,6 +70,7 @@ type Item struct {
 	Status     Status
 	Rank       int
 	MaxRank    int
+	Owned      bool // currently in the player's inventory (a copy is held)
 	PartsOwned int
 	PartsTotal int
 	Parts      []Part // acquirable parts and whether you own each (for "missing")
@@ -85,6 +86,9 @@ type Result struct {
 	Summary Summary
 	// Items is every non-mastered masterable item, sorted best-to-do-next.
 	Items []Item
+	// Mastered is every already-mastered item (sorted by name), for the
+	// full-collection view. These carry no parts (nothing left to acquire).
+	Mastered []Item
 }
 
 // classOf returns the per-rank affinity coefficient and max rank for a product
@@ -139,12 +143,14 @@ func Compute(masterable []wfdata.Item, inv *inventory.Inventory) Result {
 			UniqueName: m.UniqueName,
 			MaxRank:    maxRank,
 			Rank:       Rank(inv.MasteryXP(m.UniqueName), m.ProductCategory),
+			Owned:      owned[m.UniqueName],
 		}
 
 		if it.Rank >= maxRank {
 			it.Status = Mastered
 			res.Summary.Mastered++
-			continue // mastered items aren't actionable
+			res.Mastered = append(res.Mastered, it) // collected, not actionable
+			continue
 		}
 
 		if owned[m.UniqueName] {
@@ -175,6 +181,9 @@ func Compute(masterable []wfdata.Item, inv *inventory.Inventory) Result {
 	}
 
 	sortBestNext(res.Items)
+	sort.SliceStable(res.Mastered, func(i, j int) bool {
+		return strings.ToLower(res.Mastered[i].Name) < strings.ToLower(res.Mastered[j].Name)
+	})
 	return res
 }
 

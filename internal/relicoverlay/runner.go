@@ -32,9 +32,26 @@ type Options struct {
 	CacheDir         string
 	DataTTL          time.Duration
 	Logger           *slog.Logger
-	// Owned reports how many of a part the player owns and whether that's known
-	// (for the owned/NEW decoration). May be nil.
-	Owned func(dropName string) (int, bool)
+	// Enrich decorates a reward (by its drop name) with ownership, mastery/craft
+	// status and prime-set membership. May be nil (overlay shows price only).
+	Enrich func(dropName string) RewardInfo
+}
+
+// RewardInfo is the decoration for one reward: ownership, whether the item is
+// mastered/crafted, and the other parts of its prime set.
+type RewardInfo struct {
+	Owned      int
+	OwnedKnown bool
+	Mastered   bool
+	Crafted    bool
+	SetName    string
+	SetParts   []SetPart
+}
+
+// SetPart is one part of a reward's prime set and whether the player owns it.
+type SetPart struct {
+	Name  string
+	Owned bool
 }
 
 // Run watches EE.log and shows the overlay until ctx is cancelled.
@@ -140,10 +157,10 @@ func pipeline(ctx context.Context, opts Options, hyprc *hypr.Client, cap capture
 	}
 
 	result := pricing.Evaluate(names, database)
-	logResult(log, result, opts.Owned)
+	logResult(log, result)
 
 	if !opts.NoOverlay {
-		labels := buildLabels(frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), result, opts.Owned)
+		labels := buildLabels(frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), result, opts.Enrich)
 		go func() {
 			if err := overlay.Show(ctx, mon, labels, opts.OverlayDuration, log); err != nil {
 				log.Warn("relic overlay: show failed", "err", err)
@@ -153,7 +170,7 @@ func pipeline(ctx context.Context, opts Options, hyprc *hypr.Client, cap capture
 	return nil
 }
 
-func buildLabels(w, h int, r pricing.Result, owned func(string) (int, bool)) []overlay.Label {
+func buildLabels(w, h int, r pricing.Result, enrich func(string) RewardInfo) []overlay.Label {
 	cols := items.RewardColumns(w, h, len(r.Rewards))
 	labels := make([]overlay.Label, 0, len(r.Rewards))
 	for i, rw := range r.Rewards {
@@ -174,10 +191,15 @@ func buildLabels(w, h int, r pricing.Result, owned func(string) (int, bool)) []o
 			CenterX: (c.Min.X + c.Max.X) / 2, Top: c.Max.Y + 8,
 			Best: i == r.BestIndex,
 		}
-		if owned != nil && rw.Item != nil {
-			if n, known := owned(rw.Item.DropName); known {
-				label.OwnedKnown = true
-				label.Owned = n
+		if enrich != nil && rw.Item != nil {
+			info := enrich(rw.Item.DropName)
+			label.OwnedKnown = info.OwnedKnown
+			label.Owned = info.Owned
+			label.Mastered = info.Mastered
+			label.Crafted = info.Crafted
+			label.SetName = info.SetName
+			for _, p := range info.SetParts {
+				label.SetParts = append(label.SetParts, overlay.SetPart{Name: p.Name, Owned: p.Owned})
 			}
 		}
 		labels = append(labels, label)
@@ -185,7 +207,7 @@ func buildLabels(w, h int, r pricing.Result, owned func(string) (int, bool)) []o
 	return labels
 }
 
-func logResult(log *slog.Logger, r pricing.Result, owned func(string) (int, bool)) {
+func logResult(log *slog.Logger, r pricing.Result) {
 	for i, rw := range r.Rewards {
 		name := rw.OCRName
 		if rw.Item != nil {
