@@ -88,13 +88,25 @@ export function GetSellable() {
 }
 
 /**
+ * InventoryStatus reports the currently held inventory without scraping the
+ * game. The frontend calls it after an "inventory:loaded" event to pick up an
+ * auto-load done by the background watcher.
+ * @returns {$CancellablePromise<$models.LoadStatus>}
+ */
+export function InventoryStatus() {
+    return $Call.ByID(487357017).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType8($result);
+    }));
+}
+
+/**
  * ListOnMarket posts visible sell orders for the named items at their price.
  * @param {string[]} names
  * @returns {$CancellablePromise<$models.ListResult>}
  */
 export function ListOnMarket(names) {
     return $Call.ByID(3721823692, names).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType8($result);
+        return $$createType9($result);
     }));
 }
 
@@ -105,7 +117,7 @@ export function ListOnMarket(names) {
  */
 export function LoadInventory() {
     return $Call.ByID(1450154683).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType9($result);
+        return $$createType8($result);
     }));
 }
 
@@ -167,8 +179,8 @@ const $$createType4 = $models.MasteryView.createFrom;
 const $$createType5 = $models.RelicsView.createFrom;
 const $$createType6 = $models.SellItem.createFrom;
 const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = $models.ListResult.createFrom;
-const $$createType9 = $models.LoadStatus.createFrom;
+const $$createType8 = $models.LoadStatus.createFrom;
+const $$createType9 = $models.ListResult.createFrom;
 const $$createType10 = $models.MarketStatus.createFrom;
 const $$createType11 = $models.MarketSeller.createFrom;
 const $$createType12 = $Create.Array($$createType11);

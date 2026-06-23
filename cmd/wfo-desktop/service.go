@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
+
 	"warframe-overlay-linux/internal/config"
 	"warframe-overlay-linux/internal/db"
 	"warframe-overlay-linux/internal/inventory"
@@ -122,7 +124,50 @@ func NewService(opts serviceOptions) *Service {
 	}
 	// In-game relic-reward overlay: watch EE.log, capture, OCR, price and show.
 	go s.runOverlay()
+	// Auto-load the inventory the moment Warframe is detected (file mode loads on
+	// demand and has no game to watch).
+	if opts.inventoryFile == "" {
+		go s.autoLoadInventory(context.Background())
+	}
 	return s
+}
+
+// autoLoadInventory watches for the running game and loads the inventory the
+// moment it becomes scrapeable, so the user need not reload by hand when
+// Warframe starts after the app. It reloads on a fresh launch (new PID) and
+// keeps retrying while the player is still reaching the login screen (the
+// process exists for several seconds before the auth tokens are in memory).
+func (s *Service) autoLoadInventory(ctx context.Context) {
+	t := time.NewTicker(3 * time.Second)
+	defer t.Stop()
+	loadedPID := 0 // PID we hold a current inventory for; 0 = none
+	for {
+		switch pid, err := inventory.FindWarframePID(); {
+		case err != nil:
+			loadedPID = 0 // game gone — a relaunch reloads
+		case pid != loadedPID:
+			lctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			inv, lerr := inventory.Load(lctx)
+			cancel()
+			if lerr == nil && inv != nil {
+				s.mu.Lock()
+				s.inv = inv
+				s.invErr = ""
+				s.mu.Unlock()
+				loadedPID = pid
+				s.log.Info("inventory auto-loaded", "pid", pid)
+				if app := application.Get(); app != nil {
+					app.Event.Emit("inventory:loaded")
+				}
+			}
+			// else: not logged in yet / transient — retry on the next tick.
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }
 
 // runOverlay starts the relic-reward overlay pipeline, decorating rewards with
@@ -187,6 +232,16 @@ func (s *Service) LoadInventory() LoadStatus {
 	s.invErr = friendlyErr(err)
 	s.mu.Unlock()
 	return LoadStatus{Loaded: inv != nil, Error: friendlyErr(err)}
+}
+
+// InventoryStatus reports the currently held inventory without scraping the
+// game. The frontend calls it after an "inventory:loaded" event to pick up an
+// auto-load done by the background watcher.
+func (s *Service) InventoryStatus() LoadStatus {
+	s.mu.Lock()
+	inv, invErr := s.inv, s.invErr
+	s.mu.Unlock()
+	return LoadStatus{Loaded: inv != nil, Error: invErr}
 }
 
 // InvItem is a displayed inventory item.

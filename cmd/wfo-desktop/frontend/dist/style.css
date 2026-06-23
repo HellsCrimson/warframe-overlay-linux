@@ -1,4 +1,7 @@
 :root {
+  /* Render native form controls (select + its <option> popup) and scrollbars
+     in dark mode; otherwise WebKitGTK draws them with the light system theme. */
+  color-scheme: dark;
   --bg: #14151a; --panel: #1b1d24; --panel2: #23262f;
   --fg: #e6e6ea; --dim: #80838d; --gold: #f2b134;
   --green: #5fc7a0; --blue: #5c9bd6; --red: #e0815a;

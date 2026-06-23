@@ -5,6 +5,7 @@ import Relics from "./Relics.svelte";
 import Trades from "./Trades.svelte";
 import Analytics from "./Analytics.svelte";
 import { Service } from "../bindings/warframe-overlay-linux/cmd/wfo-desktop/index.js";
+import { Events } from "@wailsio/runtime";
 
 const tabs = ["Inventory", "Mastery", "Relics", "Trades", "Analytics"];
 let tab = $state(new URLSearchParams(location.search).get("tab") || "Inventory");
@@ -19,6 +20,13 @@ async function load() {
   loaded = true; status = "";
 }
 load();
+
+// The backend auto-loads the inventory when Warframe starts after the app; pick
+// it up here (no re-scrape — InventoryStatus just reads the held inventory).
+Events.On("inventory:loaded", async () => {
+  const st = await Service.InventoryStatus();
+  if (st.loaded) { loaded = true; status = ""; }
+});
 </script>
 
 <div class="layout">
