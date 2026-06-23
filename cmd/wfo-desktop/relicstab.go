@@ -73,11 +73,7 @@ func (s *Service) GetRelics(sortMode string) RelicsView {
 			if e, ok := setIdx[partKey(rw.Part)]; ok {
 				rr.Mastered, rr.Crafted, rr.SetName = e.Mastered, e.Crafted, e.SetName
 			}
-			if icon := s.market.IconURL(rw.Part); icon != "" {
-				rr.Icon = icon
-			} else if names != nil {
-				rr.Icon = names.ImageURLByName(rw.Part)
-			}
+			rr.Icon = partIconURL(rw.Part, false, names, prices, s.market)
 			if prices != nil {
 				if item := prices.FindPart(rw.Part); item != nil {
 					rr.Plat = int(item.Platinum + 0.5)

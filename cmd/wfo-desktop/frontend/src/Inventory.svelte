@@ -32,7 +32,7 @@ let filtered = $derived(
     {#each filtered as cat}
       <div class="cat">{cat.name} <span class="muted">({cat.items.length})</span></div>
       <div class="grid">
-        {#each cat.items as it (it.name)}
+        {#each cat.items as it}
           <div class="card" class:owned={!it.mastered} class:mastered={it.mastered}
                onclick={() => (modalItem = it)} role="button" tabindex="0" title="Show crafting tree">
             {#if it.mastered}<span class="star">★</span>{/if}

@@ -1,8 +1,12 @@
 package main
 
 import (
+	"strings"
+
+	"warframe-overlay-linux/internal/db"
 	"warframe-overlay-linux/internal/inventory"
 	"warframe-overlay-linux/internal/wfdata"
+	"warframe-overlay-linux/internal/wfmarket"
 )
 
 // maxCraftDepth caps the recipe recursion. Real recipes are shallow (item →
@@ -30,7 +34,7 @@ type CraftNode struct {
 // Resource drop-locations and build times are intentionally not included.
 func (s *Service) GetCraftingTree(itemName string) CraftNode {
 	s.mu.Lock()
-	inv, names := s.inv, s.names
+	inv, names, prices, market := s.inv, s.names, s.prices, s.market
 	s.mu.Unlock()
 	if names == nil {
 		return CraftNode{Name: itemName}
@@ -39,12 +43,16 @@ func (s *Service) GetCraftingTree(itemName string) CraftNode {
 	if !ok {
 		return CraftNode{Name: itemName}
 	}
-	return buildCraftNode(names, inv, root, 1, 0)
+	leafIcon := func(name string, resource bool) string {
+		return partIconURL(name, resource, names, prices, market)
+	}
+	return buildCraftNode(names, inv, root, 1, 0, leafIcon)
 }
 
 // buildCraftNode constructs the node for an item needed `need` times, recursing
-// into buildable components that the player still needs.
-func buildCraftNode(names *wfdata.DB, inv *inventory.Inventory, it wfdata.Item, need, depth int) CraftNode {
+// into buildable components that the player still needs. leafIcon resolves a
+// distinct thumbnail for leaf components.
+func buildCraftNode(names *wfdata.DB, inv *inventory.Inventory, it wfdata.Item, need, depth int, leafIcon func(string, bool) string) CraftNode {
 	icon := names.ImageURL(it.UniqueName)
 	if icon == "" {
 		icon = names.ImageURLByName(it.Name)
@@ -61,18 +69,19 @@ func buildCraftNode(names *wfdata.DB, inv *inventory.Inventory, it wfdata.Item, 
 		// the dataset, but once the player owns enough we show them as a satisfied
 		// leaf rather than expanding how to farm-craft them.
 		if sub, ok := names.ByUnique(c.UniqueName); ok && len(sub.Components) > 0 && have < childNeed && depth+1 < maxCraftDepth {
-			n.Children = append(n.Children, buildCraftNode(names, inv, sub, childNeed, depth+1))
+			n.Children = append(n.Children, buildCraftNode(names, inv, sub, childNeed, depth+1, leafIcon))
 			continue
 		}
-		leaf := CraftNode{
-			Name:       leafName(names, it, c),
-			Icon:       leafIcon(names, c),
+		name := leafName(names, it, c)
+		resource := isResource(inv, c)
+		n.Children = append(n.Children, CraftNode{
+			Name:       name,
+			Icon:       leafIcon(name, resource),
 			Need:       childNeed,
 			Have:       have,
 			Enough:     have >= childNeed,
-			IsResource: isResource(inv, c),
-		}
-		n.Children = append(n.Children, leaf)
+			IsResource: resource,
+		})
 	}
 	return n
 }
@@ -104,12 +113,48 @@ func leafName(names *wfdata.DB, parent wfdata.Item, c wfdata.Component) string {
 	return c.Name
 }
 
-func leafIcon(names *wfdata.DB, c wfdata.Component) string {
-	if icon := names.ImageURL(c.UniqueName); icon != "" {
-		return icon
+// partIconURL resolves a distinct thumbnail for a part or resource by display
+// name. Equipment parts prefer warframe.market's per-part images (resolving the
+// market name via the price DB, since warframestat reuses one generic icon for
+// every "Blueprint"/"Barrel"/… component); resources use warframestat's images.
+func partIconURL(name string, resource bool, names *wfdata.DB, prices *db.Database, market *wfmarket.Client) string {
+	if !resource && market != nil {
+		mname := name
+		if prices != nil {
+			if it := prices.FindPart(name); it != nil && it.Name != "" {
+				mname = it.Name
+			}
+		}
+		if u := market.IconURL(mname); u != "" {
+			return u
+		}
+		if u := market.IconURL(name); u != "" {
+			return u
+		}
 	}
-	if it, ok := names.ByUnique(c.UniqueName); ok {
-		return names.ImageURLByName(it.Name)
+	if names != nil {
+		if u := names.ImageURLByName(name); u != "" {
+			return u
+		}
+	}
+	if market != nil {
+		if u := market.IconURL(name); u != "" {
+			return u
+		}
+	}
+	// Last resort: drop a trailing "Blueprint" and retry (e.g. "Forma Blueprint"
+	// has no item image but "Forma" does).
+	if base, ok := strings.CutSuffix(name, " Blueprint"); ok {
+		if names != nil {
+			if u := names.ImageURLByName(base); u != "" {
+				return u
+			}
+		}
+		if market != nil {
+			if u := market.IconURL(base); u != "" {
+				return u
+			}
+		}
 	}
 	return ""
 }
