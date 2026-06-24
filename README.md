@@ -17,9 +17,11 @@ relic drop tables, trade analytics, and warframe.market sell-order tooling.
 | --- | --- |
 | ![Inventory tab](docs/screenshots/inventory.png) | ![Mastery tab](docs/screenshots/mastery.png) |
 
-| Relics | Analytics |
+| Relics | Trades |
 | --- | --- |
-| ![Relics tab](docs/screenshots/relics.png) | ![Analytics tab](docs/screenshots/analytics.png) |
+| ![Relics tab](docs/screenshots/relics.png) | ![Trades tab](docs/screenshots/trades.png) |
+
+![Analytics tab](docs/screenshots/analytics.png)
 
 ## Features
 
