@@ -23,14 +23,14 @@ jobs:
 
       - name: Install system dependencies
         # cgo links: tesseract/leptonica (OCR), cairo/pango (overlay) and
-        # webkit2gtk/gtk (Wails desktop shell). pkg-config must find them all.
+        # webkitgtk/gtk (Wails desktop shell). pkg-config must find them all.
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             pkg-config \
             libtesseract-dev libleptonica-dev tesseract-ocr-eng \
             libcairo2-dev libpango1.0-dev \
-            libgtk-3-dev libwebkit2gtk-4.1-dev
+            libgtk-4-dev libwebkitgtk-6.0-dev
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -46,7 +46,6 @@ jobs:
           cache-dependency-path: cmd/wfo-desktop/frontend/package-lock.json
 
       - name: Install Wails3 CLI
-        # Pin to the alpha pinned in go.mod so generated bindings match.
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.98
 
       - name: Create and push tag
