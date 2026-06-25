@@ -310,6 +310,9 @@ type MasteryPart struct {
 }
 
 type MasteryItem struct {
+	// UniqueName is the game's stable per-item id; the frontend keys its list on
+	// it because display Name is NOT unique (e.g. two distinct "Grimoire" pistols).
+	UniqueName string        `json:"uniqueName"`
 	Name       string        `json:"name"`
 	Category   string        `json:"category"`
 	Status     string        `json:"status"` // "Mastered" etc (display string)
@@ -356,7 +359,8 @@ func (s *Service) GetMastery(sortMode string) MasteryView {
 			parts = append(parts, MasteryPart{Name: p.Name, Query: p.Query, Have: p.Have, Need: p.Need})
 		}
 		mi := MasteryItem{
-			Name: it.Name, Category: it.Category, Status: it.Status.String(),
+			UniqueName: it.UniqueName,
+			Name:       it.Name, Category: it.Category, Status: it.Status.String(),
 			Rank: it.Rank, MaxRank: it.MaxRank, Owned: it.Owned,
 			PartsOwned: it.PartsOwned, PartsTotal: it.PartsTotal,
 			Parts: parts,
@@ -369,7 +373,8 @@ func (s *Service) GetMastery(sortMode string) MasteryView {
 	// stay last (after the actionable, sorted items) in every sort mode.
 	for _, it := range res.Mastered {
 		view.Items = append(view.Items, MasteryItem{
-			Name: it.Name, Category: it.Category, Status: it.Status.String(),
+			UniqueName: it.UniqueName,
+			Name:       it.Name, Category: it.Category, Status: it.Status.String(),
 			Rank: it.Rank, MaxRank: it.MaxRank, Owned: it.Owned,
 			Icon: names.ImageURLByName(it.Name),
 		})

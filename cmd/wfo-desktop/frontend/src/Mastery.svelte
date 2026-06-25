@@ -4,7 +4,7 @@ import CraftTree from "./CraftTree.svelte";
 let { loaded, status } = $props();
 
 let view = $state(null);
-let hideNotStarted = $state(true);
+let hideNotStarted = $state(false);
 let sort = $state("next");       // next | cost | relics
 let search = $state("");
 let typeFilter = $state("All");  // friendly equipment type, or All
@@ -90,7 +90,7 @@ function metric(it) {
   </div>
   <div class="scroll">
     <div class="grid">
-      {#each items as it (it.name)}
+      {#each items as it (it.uniqueName)}
         <div class="card" class:owned={it.owned} class:mastered={it.status === "Mastered"}
              onclick={() => (modalItem = it)} role="button" tabindex="0"
              title="Show crafting tree">

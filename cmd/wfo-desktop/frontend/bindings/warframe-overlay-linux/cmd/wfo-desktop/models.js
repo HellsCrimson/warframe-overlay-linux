@@ -473,6 +473,15 @@ export class MasteryItem {
      * @param {Partial<MasteryItem>} [$$source = {}] - The source object to create the MasteryItem.
      */
     constructor($$source = {}) {
+        if (!("uniqueName" in $$source)) {
+            /**
+             * UniqueName is the game's stable per-item id; the frontend keys its list on
+             * it because display Name is NOT unique (e.g. two distinct "Grimoire" pistols).
+             * @member
+             * @type {string}
+             */
+            this["uniqueName"] = "";
+        }
         if (!("name" in $$source)) {
             /**
              * @member
@@ -596,10 +605,10 @@ export class MasteryItem {
      * @returns {MasteryItem}
      */
     static createFrom($$source = {}) {
-        const $$createField8_0 = $$createType8;
+        const $$createField9_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("parts" in $$parsedSource) {
-            $$parsedSource["parts"] = $$createField8_0($$parsedSource["parts"]);
+            $$parsedSource["parts"] = $$createField9_0($$parsedSource["parts"]);
         }
         return new MasteryItem(/** @type {Partial<MasteryItem>} */($$parsedSource));
     }
