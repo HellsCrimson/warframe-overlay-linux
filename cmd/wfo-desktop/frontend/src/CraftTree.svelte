@@ -1,6 +1,12 @@
 <script>
 import { Service } from "../bindings/warframe-overlay-linux/cmd/wfo-desktop/index.js";
+import { Browser } from "@wailsio/runtime";
 let { item, onClose } = $props();
+
+// Warframe wiki article path; page titles use underscores for spaces.
+function wikiURL(name) {
+  return "https://wiki.warframe.com/w/" + encodeURIComponent((name || "").replace(/ /g, "_"));
+}
 
 let tree = $state(null);
 let hideDone = $state(false);
@@ -54,6 +60,8 @@ function onKey(e) { if (e.key === "Escape") onClose(); }
     <div class="modal-head">
       {#if item?.icon}<img class="hthumb" src={item.icon} alt="" />{/if}
       <h2>{item?.name} — crafting tree</h2>
+      <button class="btn ghost wiki" title="Open this item on the Warframe wiki"
+              onclick={() => Browser.OpenURL(wikiURL(item?.name))}>Wiki ↗</button>
       <label class="muted tg" title="Hide recipes already completed">
         <input type="checkbox" bind:checked={hideDone} /> Hide completed
       </label>
@@ -165,6 +173,7 @@ function onKey(e) { if (e.key === "Escape") onClose(); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #6a6d77; flex: none; }
 .dot.ingame { background: var(--green); }
 .dot.online { background: var(--gold); }
+.btn.wiki { padding: 4px 10px; font-size: 12px; }
 .btn.copy { padding: 2px 10px; font-size: 12px; }
 .btn.copy.done { color: var(--green); }
 .needline { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin: 3px 0; }
