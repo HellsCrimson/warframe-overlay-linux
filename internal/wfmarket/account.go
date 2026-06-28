@@ -13,7 +13,6 @@ import (
 var (
 	myOrdersURLVar   = "https://api.warframe.market/v2/orders/my"
 	closeOrderURLVar = "https://api.warframe.market/v2/order/%s/close"
-	meStatusURLVar   = "https://api.warframe.market/v2/me/status"
 )
 
 // MyOrder is one of the authenticated user's own orders.
@@ -80,29 +79,6 @@ func (c *Client) CloseOrder(sess *Session, orderID string, qty int) error {
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("wfmarket: close order (%d): %s", resp.StatusCode, apiError(raw))
-	}
-	return nil
-}
-
-// SetStatus sets the user's visibility on warframe.market. Valid values are
-// "online", "ingame" and "invisible".
-func (c *Client) SetStatus(sess *Session, status string) error {
-	if sess == nil || sess.Token == "" {
-		return fmt.Errorf("wfmarket: not signed in")
-	}
-	c.throttle()
-	body, _ := json.Marshal(map[string]any{"status": status})
-	req, _ := http.NewRequest(http.MethodPut, meStatusURLVar, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+sess.Token)
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("wfmarket: set status (%d): %s", resp.StatusCode, apiError(raw))
 	}
 	return nil
 }

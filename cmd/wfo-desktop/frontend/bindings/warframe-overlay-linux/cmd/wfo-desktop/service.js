@@ -197,8 +197,8 @@ export function SetMarketStatusMode(mode) {
 }
 
 /**
- * Shutdown is called when the app is closing: go invisible so the account is not
- * left appearing online.
+ * Shutdown is called when the app is closing: drop the presence websocket so the
+ * account isn't left appearing online (disconnecting reads as offline).
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {

@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/websocket"
+
 	"warframe-overlay-linux/internal/version"
 )
 
@@ -80,6 +82,14 @@ type Client struct {
 	mu         sync.Mutex
 	itemByName map[string]marketItem // normalized name -> {id, slug}
 	lastReq    time.Time
+
+	// Presence status is maintained over a long-lived websocket (see status.go);
+	// these are guarded by statusMu.
+	statusMu        sync.Mutex
+	statusConn      *websocket.Conn
+	statusToken     string // the JWT the current connection authenticated with
+	statusDesired   string // the status to (re)assert: online | ingame | invisible
+	statusKeepalive bool   // whether the keepalive goroutine is running
 }
 
 // New returns a client caching the item list under cacheDir.

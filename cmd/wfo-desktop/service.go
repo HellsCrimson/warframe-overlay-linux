@@ -703,9 +703,9 @@ func (s *Service) MarketLogout() {
 	s.session = nil
 	s.lastStatus = ""
 	s.mu.Unlock()
-	// Best-effort: go invisible so the account doesn't linger as "online".
+	// Drop the presence websocket so the account goes offline.
 	if sess != nil {
-		_ = s.market.SetStatus(sess, "invisible")
+		s.market.CloseStatus()
 	}
 	_ = wfmarket.ClearCredentials(config.DefaultConfigDir())
 }
@@ -838,15 +838,10 @@ func (s *Service) runStatusAuto(ctx context.Context) {
 	}
 }
 
-// Shutdown is called when the app is closing: go invisible so the account is not
-// left appearing online.
+// Shutdown is called when the app is closing: drop the presence websocket so the
+// account isn't left appearing online (disconnecting reads as offline).
 func (s *Service) Shutdown() {
-	s.mu.Lock()
-	sess := s.session
-	s.mu.Unlock()
-	if sess != nil {
-		_ = s.market.SetStatus(sess, "invisible")
-	}
+	s.market.CloseStatus()
 }
 
 // markSoldFromTrades is the trade-watcher callback: when a live trade hands an
