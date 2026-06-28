@@ -10,6 +10,7 @@ export {
 export {
     Analytics,
     CraftNode,
+    FoundryItem,
     InvCategory,
     InvItem,
     ListResult,

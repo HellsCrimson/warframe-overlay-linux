@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os/exec"
 	"sort"
 	"strings"
 	"sync"
@@ -124,6 +125,8 @@ func NewService(opts serviceOptions) *Service {
 	}
 	// In-game relic-reward overlay: watch EE.log, capture, OCR, price and show.
 	go s.runOverlay()
+	// Foundry watcher: fire a notification when a tracked build finishes.
+	go s.runFoundryNotifier(context.Background())
 	// Auto-load the inventory the moment Warframe is detected (file mode loads on
 	// demand and has no game to watch).
 	if opts.inventoryFile == "" {
@@ -492,6 +495,127 @@ func (s *Service) RefreshLivePrices(names []string) {
 			s.livePrices[name] = p
 			s.mu.Unlock()
 		}
+	}
+}
+
+// ---- Foundry ----------------------------------------------------------------
+
+// FoundryItem is one build currently crafting in the foundry.
+type FoundryItem struct {
+	Name string `json:"name"`
+	Icon string `json:"icon"`
+	// CompletionMs is the finish time in Unix milliseconds, so the frontend can
+	// render a live countdown that stays accurate without re-scraping.
+	CompletionMs int64 `json:"completionMs"`
+	// Done is true if the build already finished (completion is in the past).
+	Done bool `json:"done"`
+}
+
+// GetFoundry returns the items currently crafting, soonest-to-finish first.
+func (s *Service) GetFoundry() []FoundryItem {
+	s.mu.Lock()
+	inv, names, market := s.inv, s.names, s.market
+	s.mu.Unlock()
+	if inv == nil {
+		return nil
+	}
+	now := time.Now()
+	var out []FoundryItem
+	for _, b := range inv.Foundry() {
+		out = append(out, FoundryItem{
+			Name:         b.Name,
+			Icon:         foundryIcon(b.Name, names, market),
+			CompletionMs: b.Completion.UnixMilli(),
+			Done:         !b.Completion.IsZero() && !b.Completion.After(now),
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].CompletionMs != out[j].CompletionMs {
+			return out[i].CompletionMs < out[j].CompletionMs
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
+}
+
+// foundryIcon resolves a thumbnail for a foundry build by its display name,
+// dropping the trailing "Blueprint" the recipe name carries (the item image is
+// listed under the bare part/item name).
+func foundryIcon(name string, names *wfdata.DB, market *wfmarket.Client) string {
+	base := strings.TrimSuffix(name, " Blueprint")
+	for _, n := range []string{name, base} {
+		if names != nil {
+			if u := names.ImageURLByName(n); u != "" {
+				return u
+			}
+		}
+		if market != nil {
+			if u := marketSubOrThumb(market, n); u != "" {
+				return u
+			}
+		}
+	}
+	return ""
+}
+
+// runFoundryNotifier polls the loaded inventory's foundry queue and fires a
+// desktop + in-app notification when a build the app was watching completes. It
+// only notifies for builds it observed while still pending, so reloading an
+// inventory whose builds finished before the app started doesn't spam — and the
+// build id de-dupes across reloads.
+func (s *Service) runFoundryNotifier(ctx context.Context) {
+	t := time.NewTicker(5 * time.Second)
+	defer t.Stop()
+	watching := map[string]bool{} // ids seen while still pending
+	notified := map[string]bool{} // ids already announced
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-t.C:
+			s.mu.Lock()
+			inv := s.inv
+			s.mu.Unlock()
+			if inv == nil {
+				continue
+			}
+			for _, b := range inv.Foundry() {
+				if b.ID == "" || b.Completion.IsZero() {
+					continue
+				}
+				if b.Completion.After(now) {
+					watching[b.ID] = true
+					continue
+				}
+				if !watching[b.ID] || notified[b.ID] {
+					continue
+				}
+				notified[b.ID] = true
+				s.notifyFoundryDone(foundryDisplayName(b))
+			}
+		}
+	}
+}
+
+// foundryDisplayName drops the "Blueprint" suffix for a friendlier notification.
+func foundryDisplayName(b inventory.Build) string {
+	name := strings.TrimSuffix(b.Name, " Blueprint")
+	if name == "" {
+		name = b.Name
+	}
+	return name
+}
+
+// notifyFoundryDone surfaces a completed build: a native desktop notification
+// (best-effort via notify-send) and an in-app event for the Foundry tab toast.
+func (s *Service) notifyFoundryDone(name string) {
+	s.log.Info("foundry build ready", "item", name)
+	if app := application.Get(); app != nil {
+		app.Event.Emit("foundry:done", name)
+	}
+	// Best-effort native notification; ignored if notify-send isn't installed.
+	if path, err := exec.LookPath("notify-send"); err == nil {
+		_ = exec.Command(path, "-a", "Warframe Companion", "Foundry build ready", name+" has finished crafting.").Run()
 	}
 }
 

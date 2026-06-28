@@ -6,7 +6,9 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Inventory holds the player's owned prime-part counts (keyed by a normalized
@@ -20,19 +22,52 @@ type Inventory struct {
 	masteryXP  map[string]int // lifetime affinity per item type (mastery source)
 	relics     map[string]int // owned void relics, by internal ItemType -> count
 	categories []Category
+	building   []Build // parts/items currently crafting in the foundry
+}
+
+// Build is one recipe currently crafting in the foundry (a PendingRecipes entry):
+// the recipe's internal type, a display name derived from it, and when it
+// finishes. Parts being built are also counted toward part ownership (see Parse),
+// since they are effectively "in hand" — just not yet claimed.
+type Build struct {
+	// Type is the recipe's internal ItemType (e.g.
+	// "/Lotus/Types/Recipes/WarframeRecipes/AshChassisBlueprint").
+	Type string
+	// Name is a prettified display name derived from Type.
+	Name string
+	// ID is the build's stable instance id (ItemId.$oid), used to de-dupe
+	// completion notifications across inventory reloads.
+	ID string
+	// Completion is when the craft finishes (zero if the date couldn't be parsed).
+	Completion time.Time
 }
 
 // invJSON is the slice of the inventory response we read: owned parts live in
 // MiscItems (weapon parts) and Recipes (blueprints); equipment lists are decoded
-// separately into the category fields.
+// separately into the category fields. PendingRecipes is the foundry queue.
 type invJSON struct {
-	MiscItems []invEntry `json:"MiscItems"`
-	Recipes   []invEntry `json:"Recipes"`
+	MiscItems      []invEntry    `json:"MiscItems"`
+	Recipes        []invEntry    `json:"Recipes"`
+	PendingRecipes []pendingJSON `json:"PendingRecipes"`
 }
 
 type invEntry struct {
 	ItemType  string `json:"ItemType"`
 	ItemCount int    `json:"ItemCount"`
+}
+
+// pendingJSON is one foundry build. DE returns the completion timestamp and id as
+// MongoDB extended JSON ({"$date":{"$numberLong":"<ms>"}}, {"$oid":"<hex>"}).
+type pendingJSON struct {
+	ItemType       string `json:"ItemType"`
+	CompletionDate struct {
+		Date struct {
+			NumberLong string `json:"$numberLong"`
+		} `json:"$date"`
+	} `json:"CompletionDate"`
+	ItemId struct {
+		OID string `json:"$oid"`
+	} `json:"ItemId"`
 }
 
 var pascalRe = regexp.MustCompile(`[A-Z][a-z0-9]*`)
@@ -46,33 +81,58 @@ func Parse(raw []byte) (*Inventory, error) {
 	inv := &Inventory{owned: make(map[string]int), parts: make(map[string]int), byType: make(map[string]int), relics: make(map[string]int)}
 	add := func(entries []invEntry) {
 		for _, e := range entries {
-			// Raw count by exact type — covers resources and component blueprints
-			// that the Prime-only filter below drops (for the crafting tree).
-			if e.ItemType != "" {
-				inv.byType[e.ItemType] += e.ItemCount
+			if e.ItemType == "" {
+				continue
 			}
+			// Raw count by exact type — covers resources and component blueprints
+			// (for the crafting tree, which walks by exact uniqueName).
+			inv.byType[e.ItemType] += e.ItemCount
 			// Void relics live in MiscItems too, keyed by their projection type
 			// (e.g. ".../Projections/T1VoidProjectionDBronze"). Record them by
 			// internal type so they can be matched to drop tables; they are not
-			// "Prime" parts, so handle them before the Prime-only filter below.
+			// parts, so handle them before the part signatures below.
 			if strings.Contains(e.ItemType, "VoidProjection") {
 				inv.relics[e.ItemType] += e.ItemCount
 				continue
 			}
-			if !strings.Contains(e.ItemType, "Prime") {
-				continue
-			}
 			tokens := pascalRe.FindAllString(e.ItemType[strings.LastIndexByte(e.ItemType, '/')+1:], -1)
-			if sig := signature(tokens); sig != "" {
-				inv.owned[sig] += e.ItemCount
-			}
+			// Loose part signature for ALL items (prime and non-prime). partSignature
+			// keeps "prime", so a non-prime part never collides with its prime
+			// variant; this lets mastery/crafting match parts for non-prime items
+			// too (e.g. newly released warframes).
 			if ps := partSignature(tokens); ps != "" {
 				inv.parts[ps] += e.ItemCount
+			}
+			// Prime-set ownership (relic rewards are always prime) stays prime-only,
+			// so Owned() — used for relic-reward highlighting — isn't polluted by
+			// non-prime gear.
+			if strings.Contains(e.ItemType, "Prime") {
+				if sig := signature(tokens); sig != "" {
+					inv.owned[sig] += e.ItemCount
+				}
 			}
 		}
 	}
 	add(j.MiscItems)
 	add(j.Recipes)
+
+	// Foundry queue: items currently crafting. Count each toward part ownership —
+	// starting a build consumes the blueprint from Recipes/MiscItems, so without
+	// this a partly-built set would wrongly show its in-foundry parts as missing.
+	// add() runs them through the same signature logic as owned blueprints.
+	pend := make([]invEntry, 0, len(j.PendingRecipes))
+	for _, p := range j.PendingRecipes {
+		if p.ItemType == "" {
+			continue
+		}
+		pend = append(pend, invEntry{ItemType: p.ItemType, ItemCount: 1})
+		b := Build{Type: p.ItemType, Name: prettifyLeaf(p.ItemType), ID: p.ItemId.OID}
+		if ms, err := strconv.ParseInt(p.CompletionDate.Date.NumberLong, 10, 64); err == nil && ms > 0 {
+			b.Completion = time.UnixMilli(ms)
+		}
+		inv.building = append(inv.building, b)
+	}
+	add(pend)
 
 	// Structured equipment categories for the collection view.
 	var eq equipJSON
@@ -116,6 +176,16 @@ func (inv *Inventory) Relics() map[string]int {
 		return nil
 	}
 	return inv.relics
+}
+
+// Foundry returns the items currently crafting in the foundry (DE's
+// PendingRecipes), each with its completion time. The slice is a copy of the
+// internal state in inventory order.
+func (inv *Inventory) Foundry() []Build {
+	if inv == nil {
+		return nil
+	}
+	return inv.building
 }
 
 // Categories returns the owned equipment grouped by kind (Warframes, Primary, …).

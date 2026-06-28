@@ -2,12 +2,13 @@
 import Inventory from "./Inventory.svelte";
 import Mastery from "./Mastery.svelte";
 import Relics from "./Relics.svelte";
+import Foundry from "./Foundry.svelte";
 import Trades from "./Trades.svelte";
 import Analytics from "./Analytics.svelte";
 import { Service } from "../bindings/warframe-overlay-linux/cmd/wfo-desktop/index.js";
 import { Events } from "@wailsio/runtime";
 
-const tabs = ["Inventory", "Mastery", "Relics", "Trades", "Analytics"];
+const tabs = ["Inventory", "Mastery", "Relics", "Foundry", "Trades", "Analytics"];
 let tab = $state(new URLSearchParams(location.search).get("tab") || "Inventory");
 
 // Load inventory once at startup; tabs react to it.
@@ -40,6 +41,7 @@ Events.On("inventory:loaded", async () => {
     {#if tab === "Inventory"}<Inventory {loaded} {status} {load} />
     {:else if tab === "Mastery"}<Mastery {loaded} {status} />
     {:else if tab === "Relics"}<Relics {loaded} {status} />
+    {:else if tab === "Foundry"}<Foundry {loaded} {status} />
     {:else if tab === "Trades"}<Trades {loaded} {status} />
     {:else if tab === "Analytics"}<Analytics />
     {/if}

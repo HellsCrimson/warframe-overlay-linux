@@ -2,6 +2,47 @@ package inventory
 
 import "testing"
 
+func TestFoundryCountsTowardParts(t *testing.T) {
+	// Ash Chassis is being crafted (its blueprint was consumed from Recipes into
+	// PendingRecipes); Ash Systems sits owned as a built component. Both must count
+	// as parts the player effectively has, even though neither is a prime.
+	raw := []byte(`{
+		"MiscItems": [
+			{"ItemType":"/Lotus/Types/Recipes/WarframeRecipes/AshSystemsComponent","ItemCount":1}
+		],
+		"PendingRecipes": [
+			{
+				"ItemType":"/Lotus/Types/Recipes/WarframeRecipes/AshChassisBlueprint",
+				"CompletionDate":{"$date":{"$numberLong":"1782085762000"}},
+				"ItemId":{"$oid":"6a37cfc22b0458c8c504d6ba"}
+			}
+		]
+	}`)
+	inv, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := inv.PartCount("Ash Chassis"); got != 1 {
+		t.Errorf("Ash Chassis (building) part count = %d, want 1", got)
+	}
+	if got := inv.PartCount("Ash Systems"); got != 1 {
+		t.Errorf("Ash Systems (built) part count = %d, want 1", got)
+	}
+	f := inv.Foundry()
+	if len(f) != 1 {
+		t.Fatalf("foundry builds = %d, want 1", len(f))
+	}
+	if f[0].Name != "Ash Chassis Blueprint" {
+		t.Errorf("build name = %q, want %q", f[0].Name, "Ash Chassis Blueprint")
+	}
+	if f[0].ID != "6a37cfc22b0458c8c504d6ba" {
+		t.Errorf("build id = %q", f[0].ID)
+	}
+	if got := f[0].Completion.UnixMilli(); got != 1782085762000 {
+		t.Errorf("completion = %d, want 1782085762000", got)
+	}
+}
+
 func TestSignatureOrderAndPunctuation(t *testing.T) {
 	// Display name and internal-type tokenizations must collide.
 	cases := [][2]string{

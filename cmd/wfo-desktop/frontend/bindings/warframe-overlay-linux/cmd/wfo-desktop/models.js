@@ -181,6 +181,61 @@ export class CraftNode {
 }
 
 /**
+ * FoundryItem is one build currently crafting in the foundry.
+ */
+export class FoundryItem {
+    /**
+     * Creates a new FoundryItem instance.
+     * @param {Partial<FoundryItem>} [$$source = {}] - The source object to create the FoundryItem.
+     */
+    constructor($$source = {}) {
+        if (!("name" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["name"] = "";
+        }
+        if (!("icon" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["icon"] = "";
+        }
+        if (!("completionMs" in $$source)) {
+            /**
+             * CompletionMs is the finish time in Unix milliseconds, so the frontend can
+             * render a live countdown that stays accurate without re-scraping.
+             * @member
+             * @type {number}
+             */
+            this["completionMs"] = 0;
+        }
+        if (!("done" in $$source)) {
+            /**
+             * Done is true if the build already finished (completion is in the past).
+             * @member
+             * @type {boolean}
+             */
+            this["done"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FoundryItem instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {FoundryItem}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FoundryItem(/** @type {Partial<FoundryItem>} */($$parsedSource));
+    }
+}
+
+/**
  * InvCategory groups inventory items.
  */
 export class InvCategory {
