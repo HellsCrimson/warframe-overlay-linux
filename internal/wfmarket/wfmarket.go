@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"warframe-overlay-linux/internal/version"
 )
 
 // minInterval keeps us well under warframe.market's rate limit (~3 req/s).
@@ -21,8 +23,9 @@ const minInterval = 350 * time.Millisecond
 
 // userAgent identifies this application to warframe.market, as their API rules
 // require (https://docs.warframe.market/docs/rules — "Identify your
-// application"). Sending Go's default User-Agent risks being blocked.
-var userAgent = "warframe-overlay-linux/1.0 (+https://github.com/HellsCrimson/warframe-overlay-linux)"
+// application"). Sending Go's default User-Agent risks being blocked. The
+// version is injected at build time (defaults to "dev" locally).
+var userAgent = "warframe-overlay-linux/" + version.Version + " (+https://github.com/HellsCrimson/warframe-overlay-linux)"
 
 // uaTransport adds the identifying User-Agent (and warframe.market's expected
 // platform/language/Accept headers) to every request, so callers can't forget
