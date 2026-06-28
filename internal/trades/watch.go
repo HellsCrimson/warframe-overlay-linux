@@ -16,8 +16,11 @@ import (
 // Watch tails the EE.log at path, parsing completed trades into the store. It
 // resumes from the store's saved offset (so a trade is recorded once), and
 // re-scans from the start when the log is truncated/rotated (a new game session).
-// onTrade is called after each newly recorded trade. Blocks until ctx is done.
-func Watch(ctx context.Context, path string, store *Store, onTrade func()) {
+// onTrade is called with the trades recorded from each newly appended log
+// chunk, but NOT for the initial catch-up scan at startup (those trades are
+// already in the store; replaying them would, e.g., re-close market orders).
+// Blocks until ctx is done.
+func Watch(ctx context.Context, path string, store *Store, onTrade func(newTrades []Trade)) {
 	w := &watcher{path: path, store: store, parser: &Parser{}, onTrade: onTrade}
 	w.offset = store.GetOffset()
 	w.run(ctx)
@@ -27,13 +30,15 @@ type watcher struct {
 	path    string
 	store   *Store
 	parser  *Parser
-	onTrade func()
+	onTrade func(newTrades []Trade)
 	offset  int64
 	carry   string
+	live    bool // false during the initial catch-up scan
 }
 
 func (w *watcher) run(ctx context.Context) {
-	w.drain() // initial scan (resumes from saved offset; 0 on first run)
+	w.drain()     // initial scan (resumes from saved offset; 0 on first run)
+	w.live = true // subsequent drains carry live trades
 
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -126,8 +131,8 @@ func (w *watcher) drain() {
 		w.store.Append(found...)
 	}
 	w.store.SetOffset(w.offset)
-	if len(found) > 0 && w.onTrade != nil {
-		w.onTrade()
+	if len(found) > 0 && w.live && w.onTrade != nil {
+		w.onTrade(found)
 	}
 }
 

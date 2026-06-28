@@ -44,6 +44,9 @@ func main() {
 	app := application.New(application.Options{
 		Name:        "Warframe Companion",
 		Description: "Inventory, mastery, trades and analytics for Warframe on Linux",
+		// On exit, go invisible on warframe.market so the account isn't left
+		// appearing online.
+		OnShutdown: svc.Shutdown,
 		Services: []application.Service{
 			application.NewService(svc),
 		},

@@ -38,7 +38,7 @@ func TestWatchSiblingEventNoDuplicate(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go Watch(ctx, logPath, store, func() {})
+	go Watch(ctx, logPath, store, func([]Trade) {})
 
 	if n := pollCount(t, store, 1, 2*time.Second); n != 1 {
 		t.Fatalf("after initial scan: got %d trades, want 1", n)
@@ -85,7 +85,7 @@ func TestWatchTruncationRescans(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go Watch(ctx, logPath, store, func() {})
+	go Watch(ctx, logPath, store, func([]Trade) {})
 
 	if n := pollCount(t, store, 2, 2*time.Second); n != 2 {
 		t.Fatalf("after initial scan: got %d trades, want 2", n)

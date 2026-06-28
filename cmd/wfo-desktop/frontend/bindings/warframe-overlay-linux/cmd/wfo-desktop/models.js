@@ -337,7 +337,7 @@ export class InvItem {
 }
 
 /**
- * ListResult reports the outcome of posting sell orders.
+ * ListResult reports the outcome of posting a sell order.
  */
 export class ListResult {
     /**
@@ -506,6 +506,14 @@ export class MarketStatus {
              * @type {string}
              */
             this["error"] = "";
+        }
+        if (!("statusMode" in $$source)) {
+            /**
+             * auto | online | ingame | invisible
+             * @member
+             * @type {string}
+             */
+            this["statusMode"] = "";
         }
 
         Object.assign(this, $$source);

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -50,6 +52,9 @@ type Service struct {
 	livePrices map[string]int
 	invErr     string
 
+	statusMode string // auto | online | ingame | invisible
+	lastStatus string // last effective status pushed to warframe.market
+
 	// setIdx memoizes the part→prime-set index, rebuilt when the inventory or
 	// item metadata is (re)loaded.
 	setIdx      setIndex
@@ -82,6 +87,7 @@ func NewService(opts serviceOptions) *Service {
 		log:        opts.logger,
 		market:     wfmarket.New(config.DefaultCacheDir()),
 		livePrices: map[string]int{},
+		statusMode: loadStatusMode(),
 	}
 	go func() {
 		if d, err := wfdata.Load(wfdata.Options{CacheDir: config.DefaultCacheDir()}); err == nil {
@@ -107,7 +113,7 @@ func NewService(opts serviceOptions) *Service {
 	}()
 	// Market item list (for part thumbnails + ids) in the background.
 	go func() { _ = s.market.LoadItems() }()
-	// Auto-login to warframe.market with saved credentials.
+	// Auto-login to warframe.market with saved credentials, then apply status.
 	if creds, ok := wfmarket.LoadCredentials(config.DefaultConfigDir()); ok {
 		go func() {
 			_ = s.market.LoadItems()
@@ -115,13 +121,17 @@ func NewService(opts serviceOptions) *Service {
 				s.mu.Lock()
 				s.session = sess
 				s.mu.Unlock()
+				s.applyStatus()
 			}
 		}()
 	}
-	// Trade tracking: tail EE.log into the persistent store.
+	// Drive the warframe.market online status (auto-follows the game in "auto").
+	go s.runStatusAuto(context.Background())
+	// Trade tracking: tail EE.log into the persistent store, auto-marking sold
+	// listings when a live trade hands an item to another player.
 	if store, err := trades.OpenStore(config.DefaultConfigDir()); err == nil {
 		s.tradeStore = store
-		go trades.Watch(context.Background(), s.cfg.EELogPath, store, func() {})
+		go trades.Watch(context.Background(), s.cfg.EELogPath, store, s.markSoldFromTrades)
 	}
 	// In-game relic-reward overlay: watch EE.log, capture, OCR, price and show.
 	go s.runOverlay()
@@ -655,19 +665,20 @@ func (s *Service) notifyFoundryDone(name string) {
 // ---- warframe.market account -------------------------------------------------
 
 type MarketStatus struct {
-	LoggedIn bool   `json:"loggedIn"`
-	User     string `json:"user"`
-	Error    string `json:"error"`
+	LoggedIn   bool   `json:"loggedIn"`
+	User       string `json:"user"`
+	Error      string `json:"error"`
+	StatusMode string `json:"statusMode"` // auto | online | ingame | invisible
 }
 
 func (s *Service) MarketStatus() MarketStatus {
 	s.mu.Lock()
-	sess := s.session
+	sess, mode := s.session, s.statusMode
 	s.mu.Unlock()
 	if sess == nil {
-		return MarketStatus{}
+		return MarketStatus{StatusMode: mode}
 	}
-	return MarketStatus{LoggedIn: true, User: sess.UserName}
+	return MarketStatus{LoggedIn: true, User: sess.UserName, StatusMode: mode}
 }
 
 // MarketLogin signs in and (on success) saves the credentials.
@@ -679,56 +690,217 @@ func (s *Service) MarketLogin(email, password string) MarketStatus {
 	}
 	s.mu.Lock()
 	s.session = sess
+	s.lastStatus = ""
 	s.mu.Unlock()
 	_ = wfmarket.SaveCredentials(config.DefaultConfigDir(), wfmarket.Credentials{Email: email, Password: password})
-	return MarketStatus{LoggedIn: true, User: sess.UserName}
+	go s.applyStatus()
+	return s.MarketStatus()
 }
 
 func (s *Service) MarketLogout() {
 	s.mu.Lock()
+	sess := s.session
 	s.session = nil
+	s.lastStatus = ""
 	s.mu.Unlock()
+	// Best-effort: go invisible so the account doesn't linger as "online".
+	if sess != nil {
+		_ = s.market.SetStatus(sess, "invisible")
+	}
 	_ = wfmarket.ClearCredentials(config.DefaultConfigDir())
 }
 
-// ListResult reports the outcome of posting sell orders.
+// ListResult reports the outcome of posting a sell order.
 type ListResult struct {
 	Listed int    `json:"listed"`
 	Failed int    `json:"failed"`
 	Error  string `json:"error"`
 }
 
-// ListOnMarket posts visible sell orders for the named items at their price.
-func (s *Service) ListOnMarket(names []string) ListResult {
+// CreateSellOrder posts a single visible sell order for an item at the chosen
+// price and quantity. The quantity is capped at the number owned in inventory.
+func (s *Service) CreateSellOrder(name string, platinum, quantity int) ListResult {
 	s.mu.Lock()
-	sess := s.session
+	sess, inv := s.session, s.inv
 	s.mu.Unlock()
 	if sess == nil {
 		return ListResult{Error: "not signed in"}
 	}
-	byName := map[string]SellItem{}
-	for _, it := range s.GetSellable() {
-		byName[it.Name] = it
+	if platinum < 1 {
+		return ListResult{Error: "price must be at least 1 platinum"}
 	}
-	var res ListResult
-	for _, name := range names {
-		it, ok := byName[name]
-		if !ok {
-			res.Failed++
-			continue
+	if quantity < 1 {
+		return ListResult{Error: "quantity must be at least 1"}
+	}
+	if inv != nil {
+		if owned := inv.Owned(name); owned > 0 && quantity > owned {
+			quantity = owned // never list more than you hold
 		}
-		id, ok := s.market.ItemID(name)
-		if !ok {
-			res.Failed++
-			continue
-		}
-		if err := s.market.AddSellOrder(sess, id, priceOf(it), it.Qty); err != nil {
-			res.Failed++
+	}
+	id, ok := s.market.ItemID(s.marketName(name))
+	if !ok {
+		return ListResult{Failed: 1, Error: "item not found on warframe.market"}
+	}
+	if err := s.market.AddSellOrder(sess, id, platinum, quantity); err != nil {
+		return ListResult{Failed: 1, Error: err.Error()}
+	}
+	return ListResult{Listed: 1}
+}
+
+// ---- warframe.market online status ------------------------------------------
+
+const statusModeFile = "market-status"
+
+func statusModePath() string { return filepath.Join(config.DefaultConfigDir(), statusModeFile) }
+
+func loadStatusMode() string {
+	b, err := os.ReadFile(statusModePath())
+	if err != nil {
+		return "auto" // sensible default: in-game while playing, online otherwise
+	}
+	switch m := strings.TrimSpace(string(b)); m {
+	case "auto", "online", "ingame", "invisible":
+		return m
+	default:
+		return "auto"
+	}
+}
+
+func saveStatusMode(mode string) {
+	_ = os.MkdirAll(config.DefaultConfigDir(), 0o755)
+	_ = os.WriteFile(statusModePath(), []byte(mode), 0o644)
+}
+
+// SetMarketStatusMode changes how the app drives the warframe.market online
+// status: "auto" (in-game when the game is running, online otherwise), or a
+// fixed "online" / "ingame" / "invisible".
+func (s *Service) SetMarketStatusMode(mode string) MarketStatus {
+	switch mode {
+	case "auto", "online", "ingame", "invisible":
+	default:
+		return s.MarketStatus()
+	}
+	s.mu.Lock()
+	s.statusMode = mode
+	s.lastStatus = "" // force a re-send even if the effective status is unchanged
+	s.mu.Unlock()
+	saveStatusMode(mode)
+	go s.applyStatus()
+	return s.MarketStatus()
+}
+
+// applyStatus pushes the effective online status to warframe.market, but only
+// when it has changed since the last successful push (so the auto poll loop
+// doesn't spam the API every tick).
+func (s *Service) applyStatus() {
+	s.mu.Lock()
+	sess, mode := s.session, s.statusMode
+	s.mu.Unlock()
+	if sess == nil || mode == "" {
+		return
+	}
+	eff := mode
+	if mode == "auto" {
+		if _, err := inventory.FindWarframePID(); err == nil {
+			eff = "ingame"
 		} else {
-			res.Listed++
+			eff = "online"
 		}
 	}
-	return res
+	s.mu.Lock()
+	if eff == s.lastStatus {
+		s.mu.Unlock()
+		return
+	}
+	s.lastStatus = eff
+	s.mu.Unlock()
+
+	// Note lastStatus is left set on failure (above) so a misconfigured endpoint
+	// doesn't re-fire every poll tick; the next real change (login, game
+	// start/stop, mode switch) retries.
+	if err := s.market.SetStatus(sess, eff); err != nil {
+		s.log.Warn("set market status", "status", eff, "err", err)
+	}
+}
+
+// runStatusAuto periodically re-evaluates the effective status so "auto" mode
+// follows the game starting and stopping.
+func (s *Service) runStatusAuto(ctx context.Context) {
+	t := time.NewTicker(5 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			s.applyStatus()
+		}
+	}
+}
+
+// Shutdown is called when the app is closing: go invisible so the account is not
+// left appearing online.
+func (s *Service) Shutdown() {
+	s.mu.Lock()
+	sess := s.session
+	s.mu.Unlock()
+	if sess != nil {
+		_ = s.market.SetStatus(sess, "invisible")
+	}
+}
+
+// markSoldFromTrades is the trade-watcher callback: when a live trade hands an
+// item to another player and we have a matching sell listing, record the sale
+// on warframe.market (a partial close lowers the quantity; a full close removes
+// the order).
+func (s *Service) markSoldFromTrades(newTrades []trades.Trade) {
+	s.mu.Lock()
+	sess := s.session
+	s.mu.Unlock()
+	if sess == nil {
+		return
+	}
+	sold := map[string]int{} // item name -> total quantity given away
+	for _, t := range newTrades {
+		for _, it := range t.Gave {
+			if it.IsPlatinum() || it.Qty <= 0 {
+				continue
+			}
+			sold[it.Name] += it.Qty
+		}
+	}
+	if len(sold) == 0 {
+		return
+	}
+	orders, err := s.market.MyOrders(sess)
+	if err != nil {
+		s.log.Warn("mark sold: list my orders", "err", err)
+		return
+	}
+	sellByItem := map[string]wfmarket.MyOrder{}
+	for _, o := range orders {
+		if o.Type == "sell" {
+			sellByItem[o.ItemID] = o
+		}
+	}
+	for name, qty := range sold {
+		id, ok := s.market.ItemID(s.marketName(name))
+		if !ok {
+			continue
+		}
+		o, ok := sellByItem[id]
+		if !ok {
+			continue // no listing for this item — nothing to close
+		}
+		if qty > o.Quantity {
+			qty = o.Quantity
+		}
+		if err := s.market.CloseOrder(sess, o.ID, qty); err != nil {
+			s.log.Warn("mark sold: close order", "item", name, "err", err)
+		} else {
+			s.log.Info("marked sold on warframe.market", "item", name, "qty", qty)
+		}
+	}
 }
 
 // ---- Analytics --------------------------------------------------------------

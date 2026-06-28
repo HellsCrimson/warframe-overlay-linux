@@ -17,12 +17,26 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as $models from "./models.js";
 
 /**
+ * CreateSellOrder posts a single visible sell order for an item at the chosen
+ * price and quantity. The quantity is capped at the number owned in inventory.
+ * @param {string} name
+ * @param {number} platinum
+ * @param {number} quantity
+ * @returns {$CancellablePromise<$models.ListResult>}
+ */
+export function CreateSellOrder(name, platinum, quantity) {
+    return $Call.ByID(1121147103, name, platinum, quantity).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType0($result);
+    }));
+}
+
+/**
  * GetAnalytics returns inventory value plus tracked-trade stats.
  * @returns {$CancellablePromise<$models.Analytics>}
  */
 export function GetAnalytics() {
     return $Call.ByID(2768680213).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType0($result);
+        return $$createType1($result);
     }));
 }
 
@@ -36,7 +50,7 @@ export function GetAnalytics() {
  */
 export function GetCraftingTree(itemName) {
     return $Call.ByID(1111094725, itemName).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType1($result);
+        return $$createType2($result);
     }));
 }
 
@@ -46,7 +60,7 @@ export function GetCraftingTree(itemName) {
  */
 export function GetFoundry() {
     return $Call.ByID(2227317752).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType3($result);
+        return $$createType4($result);
     }));
 }
 
@@ -57,7 +71,7 @@ export function GetFoundry() {
  */
 export function GetInventory() {
     return $Call.ByID(1453675977).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType5($result);
+        return $$createType6($result);
     }));
 }
 
@@ -70,7 +84,7 @@ export function GetInventory() {
  */
 export function GetMastery(sortMode) {
     return $Call.ByID(4196764460, sortMode).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType6($result);
+        return $$createType7($result);
     }));
 }
 
@@ -83,7 +97,7 @@ export function GetMastery(sortMode) {
  */
 export function GetRelics(sortMode) {
     return $Call.ByID(2917727547, sortMode).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType7($result);
+        return $$createType8($result);
     }));
 }
 
@@ -93,7 +107,7 @@ export function GetRelics(sortMode) {
  */
 export function GetSellable() {
     return $Call.ByID(340323687).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType9($result);
+        return $$createType10($result);
     }));
 }
 
@@ -105,17 +119,6 @@ export function GetSellable() {
  */
 export function InventoryStatus() {
     return $Call.ByID(487357017).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType10($result);
-    }));
-}
-
-/**
- * ListOnMarket posts visible sell orders for the named items at their price.
- * @param {string[]} names
- * @returns {$CancellablePromise<$models.ListResult>}
- */
-export function ListOnMarket(names) {
-    return $Call.ByID(3721823692, names).then(/** @type {($result: any) => any} */(($result) => {
         return $$createType11($result);
     }));
 }
@@ -127,7 +130,7 @@ export function ListOnMarket(names) {
  */
 export function LoadInventory() {
     return $Call.ByID(1450154683).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType10($result);
+        return $$createType11($result);
     }));
 }
 
@@ -181,6 +184,28 @@ export function RefreshLivePrices(names) {
 }
 
 /**
+ * SetMarketStatusMode changes how the app drives the warframe.market online
+ * status: "auto" (in-game when the game is running, online otherwise), or a
+ * fixed "online" / "ingame" / "invisible".
+ * @param {string} mode
+ * @returns {$CancellablePromise<$models.MarketStatus>}
+ */
+export function SetMarketStatusMode(mode) {
+    return $Call.ByID(1031646238, mode).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType12($result);
+    }));
+}
+
+/**
+ * Shutdown is called when the app is closing: go invisible so the account is not
+ * left appearing online.
+ * @returns {$CancellablePromise<void>}
+ */
+export function Shutdown() {
+    return $Call.ByID(2612259035);
+}
+
+/**
  * TopSellers returns up to n cheapest, online-first public sell listings for an
  * item — used to show the current going price before listing it yourself.
  * n <= 0 defaults to 3.
@@ -195,18 +220,18 @@ export function TopSellers(query, n) {
 }
 
 // Private type creation functions
-const $$createType0 = $models.Analytics.createFrom;
-const $$createType1 = $models.CraftNode.createFrom;
-const $$createType2 = $models.FoundryItem.createFrom;
-const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = $models.InvCategory.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = $models.MasteryView.createFrom;
-const $$createType7 = $models.RelicsView.createFrom;
-const $$createType8 = $models.SellItem.createFrom;
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = $models.LoadStatus.createFrom;
-const $$createType11 = $models.ListResult.createFrom;
+const $$createType0 = $models.ListResult.createFrom;
+const $$createType1 = $models.Analytics.createFrom;
+const $$createType2 = $models.CraftNode.createFrom;
+const $$createType3 = $models.FoundryItem.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = $models.InvCategory.createFrom;
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = $models.MasteryView.createFrom;
+const $$createType8 = $models.RelicsView.createFrom;
+const $$createType9 = $models.SellItem.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = $models.LoadStatus.createFrom;
 const $$createType12 = $models.MarketStatus.createFrom;
 const $$createType13 = $models.MarketSeller.createFrom;
 const $$createType14 = $Create.Array($$createType13);
