@@ -402,13 +402,21 @@ func (s *Service) PartSellers(query string) []MarketSeller {
 	prices := s.prices
 	s.mu.Unlock()
 
+	// Pick the name warframe.market actually knows. Weapon parts are listed
+	// under the plain part name ("Soma Prime Barrel"), but warframe components
+	// keep the "Blueprint" suffix that DropName carries ("Mirage Prime Systems
+	// Blueprint"), so try both and fall back to the raw query.
 	name := query
 	if prices != nil {
 		if item := prices.FindPart(query); item != nil {
-			// Use the plain part name: warframe.market lists components
-			// without the "Blueprint" suffix that DropName carries for
-			// warframe parts (relic-drop naming), so DropName misses the slug.
 			name = item.Name
+			_ = s.market.LoadItems() // ensure the slug map is populated (cached)
+			for _, cand := range []string{item.Name, item.DropName} {
+				if _, ok := s.market.Slug(cand); ok {
+					name = cand
+					break
+				}
+			}
 		}
 	}
 	orders, err := s.market.SellOrders(name, 12)

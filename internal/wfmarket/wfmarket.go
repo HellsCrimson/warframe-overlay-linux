@@ -26,7 +26,7 @@ var (
 	authBaseURL  = "https://api.warframe.market/v1"
 	ordersURLVar = "https://api.warframe.market/v1/profile/orders"
 	// publicOrdersURLVar lists all public buy/sell orders for an item slug.
-	publicOrdersURLVar = "https://api.warframe.market/v1/items/%s/orders"
+	publicOrdersURLVar = "https://api.warframe.market/v2/orders/item/%s"
 )
 
 // iconBase prefixes warframe.market relative image paths.
@@ -217,18 +217,16 @@ type Order struct {
 }
 
 type ordersResp struct {
-	Payload struct {
-		Orders []struct {
-			Platinum  int    `json:"platinum"`
-			Quantity  int    `json:"quantity"`
-			OrderType string `json:"order_type"`
-			Visible   bool   `json:"visible"`
-			User      struct {
-				IngameName string `json:"ingame_name"`
-				Status     string `json:"status"`
-			} `json:"user"`
-		} `json:"orders"`
-	} `json:"payload"`
+	Data []struct {
+		Platinum int    `json:"platinum"`
+		Quantity int    `json:"quantity"`
+		Type     string `json:"type"`
+		Visible  bool   `json:"visible"`
+		User     struct {
+			IngameName string `json:"ingameName"`
+			Status     string `json:"status"`
+		} `json:"user"`
+	} `json:"data"`
 }
 
 // SellOrders returns public sell listings for an item display name — online
@@ -254,9 +252,9 @@ func (c *Client) SellOrders(name string, limit int) ([]Order, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&o); err != nil {
 		return nil, err
 	}
-	out := make([]Order, 0, len(o.Payload.Orders))
-	for _, ord := range o.Payload.Orders {
-		if ord.OrderType != "sell" || !ord.Visible || ord.User.IngameName == "" {
+	out := make([]Order, 0, len(o.Data))
+	for _, ord := range o.Data {
+		if ord.Type != "sell" || !ord.Visible || ord.User.IngameName == "" {
 			continue
 		}
 		out = append(out, Order{
