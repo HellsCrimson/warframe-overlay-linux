@@ -5,10 +5,16 @@ let { loaded, status } = $props();
 
 let view = $state(null);
 let hideNotStarted = $state(false);
+let hideMastered = $state(false);
+let hideAlpha = $state(true);    // hide unobtainable Founder items by default
 let sort = $state("next");       // next | cost | relics
 let search = $state("");
 let typeFilter = $state("All");  // friendly equipment type, or All
 let modalItem = $state(null);    // item whose crafting tree is open
+
+// "Alpha" (Founder) items can never be obtained, so they only clutter the
+// collection view — hidden by default via the switch.
+const alphaItems = new Set(["excalibur prime", "skana prime", "lato prime"]);
 
 // Refetch when the sort mode changes (the backend does the ordering).
 $effect(() => { if (loaded) Service.GetMastery(sort).then((v) => (view = v)); });
@@ -30,6 +36,8 @@ let types = $derived(!view ? [] : [...new Set(view.items.map((it) => typeOf(it.c
 let items = $derived(
   !view ? [] : view.items.filter((it) =>
     (!hideNotStarted || it.status !== "Not started") &&
+    (!hideMastered || it.status !== "Mastered") &&
+    (!hideAlpha || !alphaItems.has(it.name.toLowerCase())) &&
     (typeFilter === "All" || typeOf(it.category) === typeFilter) &&
     (!search || it.name.toLowerCase().includes(search.toLowerCase())))
 );
@@ -86,6 +94,12 @@ function metric(it) {
     <input class="csearch" placeholder="Search…" bind:value={search} />
     <label class="muted" style="display:flex; gap:8px; align-items:center; cursor:pointer">
       <input type="checkbox" bind:checked={hideNotStarted} /> Hide not-yet-started
+    </label>
+    <label class="muted" style="display:flex; gap:8px; align-items:center; cursor:pointer">
+      <input type="checkbox" bind:checked={hideMastered} /> Hide mastered
+    </label>
+    <label class="muted" style="display:flex; gap:8px; align-items:center; cursor:pointer">
+      <input type="checkbox" bind:checked={hideAlpha} /> Hide alpha items
     </label>
   </div>
   <div class="scroll">
