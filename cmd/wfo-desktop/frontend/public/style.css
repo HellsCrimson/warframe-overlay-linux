@@ -49,6 +49,19 @@ input { font-family: inherit; }
 .input { flex: 1; background: var(--bg); border: none; border-radius: 6px; padding: 9px;
   color: var(--fg); outline: none; }
 
+/* trades: per-item market price expander */
+.prices { background: none; border: none; color: var(--dim); font: inherit; font-size: 12px;
+  cursor: pointer; padding: 2px 6px; border-radius: 6px; white-space: nowrap; }
+.prices:hover { color: var(--fg); background: var(--panel2); }
+.prices.open { color: var(--gold); }
+.listings { display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  padding: 2px 8px 8px 52px; font-size: 13px; }
+.listing { display: inline-flex; align-items: baseline; gap: 5px; color: var(--gold); font-weight: 600; }
+.listing.offline { color: var(--dim); }
+.listing .lstatus { font-size: 11px; font-weight: 400; color: var(--dim); }
+.listing.ingame .lstatus { color: var(--green); }
+.listing.online .lstatus { color: var(--blue); }
+
 /* responsive card grid (collection / mastery / inventory) */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   gap: 12px; padding: 4px 2px 18px; align-content: start; }

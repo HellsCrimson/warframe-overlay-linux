@@ -19,6 +19,32 @@ import (
 // minInterval keeps us well under warframe.market's rate limit (~3 req/s).
 const minInterval = 350 * time.Millisecond
 
+// userAgent identifies this application to warframe.market, as their API rules
+// require (https://docs.warframe.market/docs/rules — "Identify your
+// application"). Sending Go's default User-Agent risks being blocked.
+var userAgent = "warframe-overlay-linux/1.0 (+https://github.com/HellsCrimson/warframe-overlay-linux)"
+
+// uaTransport adds the identifying User-Agent (and warframe.market's expected
+// platform/language/Accept headers) to every request, so callers can't forget
+// them. Headers already set by the caller are left untouched.
+type uaTransport struct{ base http.RoundTripper }
+
+func (t *uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	r := req.Clone(req.Context()) // RoundTrippers must not mutate the input request
+	for k, v := range map[string]string{
+		"User-Agent": userAgent, "platform": "pc", "language": "en", "Accept": "application/json",
+	} {
+		if r.Header.Get(k) == "" {
+			r.Header.Set(k, v)
+		}
+	}
+	return base.RoundTrip(r)
+}
+
 // Endpoint URLs (vars so tests can point them at a local server).
 var (
 	itemsURLVar  = "https://api.warframe.market/v2/items"
@@ -52,7 +78,10 @@ type Client struct {
 
 // New returns a client caching the item list under cacheDir.
 func New(cacheDir string) *Client {
-	return &Client{http: &http.Client{Timeout: 25 * time.Second}, cacheDir: cacheDir}
+	return &Client{
+		http:     &http.Client{Timeout: 25 * time.Second, Transport: &uaTransport{}},
+		cacheDir: cacheDir,
+	}
 }
 
 type itemsResp struct {

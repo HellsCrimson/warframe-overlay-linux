@@ -180,6 +180,20 @@ export function RefreshLivePrices(names) {
     return $Call.ByID(2736758036, names);
 }
 
+/**
+ * TopSellers returns up to n cheapest, online-first public sell listings for an
+ * item — used to show the current going price before listing it yourself.
+ * n <= 0 defaults to 3.
+ * @param {string} query
+ * @param {number} n
+ * @returns {$CancellablePromise<$models.MarketSeller[]>}
+ */
+export function TopSellers(query, n) {
+    return $Call.ByID(3797767868, query, n).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType14($result);
+    }));
+}
+
 // Private type creation functions
 const $$createType0 = $models.Analytics.createFrom;
 const $$createType1 = $models.CraftNode.createFrom;

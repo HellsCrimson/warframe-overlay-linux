@@ -17,6 +17,21 @@ async function reload() { items = (await Service.GetSellable()) || []; }
 $effect(() => { if (loaded) reload(); });
 Service.MarketStatus().then((m) => (market = m));
 
+// Per-item top-3 market listings, loaded on demand (the API is rate-limited,
+// so we fetch only the row the user expands).
+let expanded = $state("");          // name of the row whose listings are shown
+let listings = $state({});          // name -> array of {platinum,status,...} | null (loading)
+async function toggleListings(name) {
+  if (expanded === name) { expanded = ""; return; }
+  expanded = name;
+  if (listings[name] === undefined) {
+    listings = { ...listings, [name]: null };
+    const rows = (await Service.TopSellers(name, 3)) || [];
+    listings = { ...listings, [name]: rows };
+  }
+}
+const statusLabel = { ingame: "in-game", online: "online", offline: "offline" };
+
 const sorters = {
   Value: (a, b) => price(a) - price(b),
   Name: (a, b) => a.name.localeCompare(b.name),
@@ -91,8 +106,24 @@ async function listOnWFM() {
         {#if it.icon}<img class="thumb" src={it.icon} alt="" loading="lazy" />{:else}<div class="thumb ph"></div>{/if}
         <span class="iname">{it.name}{#if it.qty > 1}<span class="muted"> ×{it.qty}</span>{/if}</span>
         <span class="muted" style="margin-right:14px">{it.ducats} ducats</span>
+        <button class="prices" class:open={expanded === it.name} onclick={() => toggleListings(it.name)}
+          title="Show current warframe.market sell prices">market ›</button>
         <span style="color:{it.live > 0 ? 'var(--green)' : 'var(--gold)'}; width:60px; text-align:right">{price(it)}p</span>
       </div>
+      {#if expanded === it.name}
+        <div class="listings">
+          {#if listings[it.name] === null}
+            <span class="muted">Loading market prices…</span>
+          {:else if !listings[it.name]?.length}
+            <span class="muted">No current sellers found.</span>
+          {:else}
+            <span class="muted">Top sellers:</span>
+            {#each listings[it.name] as o}
+              <span class="listing {o.status}">{o.platinum}p<span class="lstatus">{statusLabel[o.status] || o.status}</span></span>
+            {/each}
+          {/if}
+        </div>
+      {/if}
     {/each}
   </div>
 {:else}

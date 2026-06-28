@@ -395,17 +395,15 @@ type MarketSeller struct {
 	Whisper  string `json:"whisper"`
 }
 
-// PartSellers looks up warframe.market sellers for a part (by its "<item>
-// <component>" query) and returns each with a copyable purchase whisper.
-func (s *Service) PartSellers(query string) []MarketSeller {
+// marketName maps a part/display name to the name warframe.market lists it
+// under: weapon parts use the plain part name ("Soma Prime Barrel"), but
+// warframe components keep the "Blueprint" suffix that DropName carries
+// ("Mirage Prime Systems Blueprint"). It tries both and falls back to the raw
+// query when the part is unknown.
+func (s *Service) marketName(query string) string {
 	s.mu.Lock()
 	prices := s.prices
 	s.mu.Unlock()
-
-	// Pick the name warframe.market actually knows. Weapon parts are listed
-	// under the plain part name ("Soma Prime Barrel"), but warframe components
-	// keep the "Blueprint" suffix that DropName carries ("Mirage Prime Systems
-	// Blueprint"), so try both and fall back to the raw query.
 	name := query
 	if prices != nil {
 		if item := prices.FindPart(query); item != nil {
@@ -419,6 +417,13 @@ func (s *Service) PartSellers(query string) []MarketSeller {
 			}
 		}
 	}
+	return name
+}
+
+// PartSellers looks up warframe.market sellers for a part (by its "<item>
+// <component>" query) and returns each with a copyable purchase whisper.
+func (s *Service) PartSellers(query string) []MarketSeller {
+	name := s.marketName(query)
 	orders, err := s.market.SellOrders(name, 12)
 	if err != nil {
 		return nil
@@ -429,6 +434,26 @@ func (s *Service) PartSellers(query string) []MarketSeller {
 			User: o.Seller, Platinum: o.Platinum, Quantity: o.Quantity, Status: o.Status,
 			Whisper: fmt.Sprintf("/w %s Hi! I want to buy: \"%s\" for %d platinum. (warframe.market from warframe-overlay-linux)",
 				o.Seller, name, o.Platinum),
+		})
+	}
+	return out
+}
+
+// TopSellers returns up to n cheapest, online-first public sell listings for an
+// item — used to show the current going price before listing it yourself.
+// n <= 0 defaults to 3.
+func (s *Service) TopSellers(query string, n int) []MarketSeller {
+	if n <= 0 {
+		n = 3
+	}
+	orders, err := s.market.SellOrders(s.marketName(query), n)
+	if err != nil {
+		return nil
+	}
+	out := make([]MarketSeller, 0, len(orders))
+	for _, o := range orders {
+		out = append(out, MarketSeller{
+			User: o.Seller, Platinum: o.Platinum, Quantity: o.Quantity, Status: o.Status,
 		})
 	}
 	return out

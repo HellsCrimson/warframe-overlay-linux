@@ -21,7 +21,8 @@ type Session struct {
 // is the session token.
 func (c *Client) Login(email, password string) (*Session, error) {
 	jar, _ := cookiejar.New(nil)
-	hc := &http.Client{Timeout: c.http.Timeout, Jar: jar}
+	// Reuse the identifying transport (User-Agent etc.) for the login flow too.
+	hc := &http.Client{Timeout: c.http.Timeout, Jar: jar, Transport: c.http.Transport}
 
 	// 1. Bootstrap a JWT cookie.
 	bootReq, _ := http.NewRequest(http.MethodGet, authBaseURL, nil)
