@@ -62,6 +62,7 @@ let items = $derived(
         <option value="era">Era</option>
         <option value="value">Value (best)</option>
         <option value="count">Count</option>
+        <option value="unlocked">Least unlocked</option>
       </select>
     </label>
     <input class="csearch" placeholder="Search…" bind:value={search} />

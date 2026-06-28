@@ -1,12 +1,16 @@
 package main
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Relic sort modes (values shared with the frontend selector).
 const (
-	relicSortEra   = "era"   // by era (Lith→Requiem), then code, then refinement
-	relicSortValue = "value" // by expected platinum per crack, richest first
-	relicSortCount = "count" // by how many the player holds, most first
+	relicSortEra      = "era"      // by era (Lith→Requiem), then code, then refinement
+	relicSortValue    = "value"    // by expected platinum per crack, richest first
+	relicSortCount    = "count"    // by how many the player holds, most first
+	relicSortUnlocked = "unlocked" // by fewest already-unlocked rewards first (Forma excluded)
 )
 
 // RelicReward is one possible drop from a relic, valued and flagged with whether
@@ -108,6 +112,23 @@ func eraRank(e string) int {
 	return len(eraOrder)
 }
 
+// unlockTally counts a relic's rewards by whether the player has already
+// unlocked them (owned, crafted or mastered) versus still locked ("new"),
+// ignoring Forma rewards, which aren't collectible items.
+func unlockTally(row RelicRow) (unlocked, locked int) {
+	for _, rw := range row.Rewards {
+		if strings.Contains(rw.Part, "Forma") {
+			continue
+		}
+		if rw.Owned > 0 || rw.Crafted || rw.Mastered {
+			unlocked++
+		} else {
+			locked++
+		}
+	}
+	return unlocked, locked
+}
+
 // sortRelics orders the relic rows by the chosen mode (era is the default).
 func sortRelicRows(rows []RelicRow, mode string) {
 	switch mode {
@@ -115,6 +136,22 @@ func sortRelicRows(rows []RelicRow, mode string) {
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Value > rows[j].Value })
 	case relicSortCount:
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Count > rows[j].Count })
+	case relicSortUnlocked:
+		// Relics whose rewards you've unlocked the fewest of come first, so
+		// cracking them is most likely to give a new item. Forma rewards are
+		// not collectible, so they're ignored on both sides of the ratio.
+		// Ties break toward more still-locked rewards, then higher value.
+		sort.SliceStable(rows, func(i, j int) bool {
+			ui, ni := unlockTally(rows[i])
+			uj, nj := unlockTally(rows[j])
+			if ui != uj {
+				return ui < uj
+			}
+			if ni != nj {
+				return ni > nj
+			}
+			return rows[i].Value > rows[j].Value
+		})
 	default: // by era, then code, then refinement
 		sort.SliceStable(rows, func(i, j int) bool {
 			a, b := rows[i], rows[j]
