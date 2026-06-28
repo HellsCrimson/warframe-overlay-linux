@@ -7,24 +7,34 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"strings"
 )
 
 // Session is an authenticated warframe.market session.
 type Session struct {
-	Token    string // JWT for the Authorization header
-	UserName string // in-game name ( for display)
+	Token    string // raw JWT (no scheme prefix)
+	UserName string // in-game name (for display)
 }
 
-// Login authenticates with email + password and returns a session, following
-// warframe.market's flow: GET the API to obtain a JWT cookie, then POST that as
-// the Authorization header to /auth/signin; the response's Authorization header
-// is the session token.
+// Login authenticates with email + password and returns a session.
+//
+// warframe.market still uses the v1 signin flow (OAuth 2.0 is not yet public),
+// guarded by a double-submit CSRF check: the anonymous JWT issued as a cookie
+// must ALSO be echoed in the Authorization header. The flow is therefore:
+//  1. GET a v1 endpoint to obtain the anonymous JWT cookie (set by middleware
+//     even on a 404), captured by the cookie jar.
+//  2. POST /auth/signin with that cookie (resent by the jar) AND the same token
+//     as "Authorization: JWT <jwt>", auth_type=header.
+//
+// The authenticated token comes back in the Authorization response header (or a
+// refreshed JWT cookie) and is stored raw, to be presented as a Bearer token to
+// the v2 order endpoint.
 func (c *Client) Login(email, password string) (*Session, error) {
 	jar, _ := cookiejar.New(nil)
 	// Reuse the identifying transport (User-Agent etc.) for the login flow too.
 	hc := &http.Client{Timeout: c.http.Timeout, Jar: jar, Transport: c.http.Transport}
 
-	// 1. Bootstrap a JWT cookie.
+	// 1. Bootstrap the anonymous JWT cookie (set by middleware on any v1 path).
 	bootReq, _ := http.NewRequest(http.MethodGet, authBaseURL, nil)
 	marketHeaders(bootReq)
 	bootResp, err := hc.Do(bootReq)
@@ -33,13 +43,17 @@ func (c *Client) Login(email, password string) (*Session, error) {
 	}
 	bootResp.Body.Close()
 	jwt := ""
-	for _, ck := range bootResp.Cookies() {
+	for _, ck := range jar.Cookies(bootReq.URL) {
 		if ck.Name == "JWT" {
 			jwt = ck.Value
 		}
 	}
+	if jwt == "" {
+		return nil, fmt.Errorf("wfmarket: bootstrap returned no JWT cookie")
+	}
 
-	// 2. Sign in.
+	// 2. Sign in. The jar resends the JWT cookie; the Authorization header
+	// echoes it to satisfy the CSRF check.
 	body, _ := json.Marshal(map[string]any{
 		"email":     email,
 		"password":  password,
@@ -48,9 +62,7 @@ func (c *Client) Login(email, password string) (*Session, error) {
 	req, _ := http.NewRequest(http.MethodPost, authBaseURL+"/auth/signin", bytes.NewReader(body))
 	marketHeaders(req)
 	req.Header.Set("Content-Type", "application/json")
-	if jwt != "" {
-		req.Header.Set("Authorization", jwt)
-	}
+	req.Header.Set("Authorization", "JWT "+jwt)
 	resp, err := hc.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("wfmarket: signin: %w", err)
@@ -60,12 +72,13 @@ func (c *Client) Login(email, password string) (*Session, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("wfmarket: signin failed (%d): %s", resp.StatusCode, apiError(raw))
 	}
-	token := resp.Header.Get("Authorization")
+
+	token := jwtToken(resp.Header.Get("Authorization"))
 	if token == "" {
-		// Some responses deliver it as a Set-Cookie JWT instead.
-		for _, ck := range resp.Cookies() {
-			if ck.Name == "JWT" {
-				token = "JWT " + ck.Value
+		// Some responses deliver the authenticated token as a refreshed cookie.
+		for _, ck := range jar.Cookies(req.URL) {
+			if ck.Name == "JWT" && ck.Value != jwt {
+				token = ck.Value
 			}
 		}
 	}
@@ -84,23 +97,34 @@ func (c *Client) Login(email, password string) (*Session, error) {
 	return &Session{Token: token, UserName: sr.Payload.User.IngameName}, nil
 }
 
-// AddSellOrder posts a visible sell order for an item id at the given price.
+// jwtToken strips a "JWT "/"Bearer " scheme prefix, returning the raw token.
+func jwtToken(authHeader string) string {
+	t := strings.TrimSpace(authHeader)
+	for _, scheme := range []string{"JWT ", "Bearer "} {
+		if len(t) >= len(scheme) && strings.EqualFold(t[:len(scheme)], scheme) {
+			return strings.TrimSpace(t[len(scheme):])
+		}
+	}
+	return t
+}
+
+// AddSellOrder posts a visible sell order for an item id at the given price,
+// via the v2 order endpoint with the session JWT as a Bearer token.
 func (c *Client) AddSellOrder(sess *Session, itemID string, platinum, quantity int) error {
 	if sess == nil || sess.Token == "" {
 		return fmt.Errorf("wfmarket: not signed in")
 	}
 	body, _ := json.Marshal(map[string]any{
-		"item":       itemID,
-		"order_type": "sell",
-		"platinum":   platinum,
-		"quantity":   quantity,
-		"visible":    true,
-		"rank":       0,
+		"itemId":   itemID,
+		"type":     "sell",
+		"platinum": platinum,
+		"quantity": quantity,
+		"visible":  true,
 	})
 	req, _ := http.NewRequest(http.MethodPost, ordersURLVar, bytes.NewReader(body))
 	marketHeaders(req)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", sess.Token)
+	req.Header.Set("Authorization", "Bearer "+sess.Token)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return err
@@ -122,8 +146,8 @@ func marketHeaders(req *http.Request) {
 // apiError extracts warframe.market's error message from a response body.
 func apiError(raw []byte) string {
 	var e struct {
-		Error   string                 `json:"error"`
-		Payload map[string]interface{} `json:"payload"`
+		Error   string         `json:"error"`
+		Payload map[string]any `json:"payload"`
 	}
 	if json.Unmarshal(raw, &e) == nil && e.Error != "" {
 		return e.Error

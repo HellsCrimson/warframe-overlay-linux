@@ -50,10 +50,13 @@ func (t *uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // Endpoint URLs (vars so tests can point them at a local server).
 var (
-	itemsURLVar  = "https://api.warframe.market/v2/items"
-	statsURLVar  = "https://api.warframe.market/v1/items/%s/statistics"
-	authBaseURL  = "https://api.warframe.market/v1"
-	ordersURLVar = "https://api.warframe.market/v1/profile/orders"
+	itemsURLVar = "https://api.warframe.market/v2/items"
+	statsURLVar = "https://api.warframe.market/v1/items/%s/statistics"
+	authBaseURL = "https://api.warframe.market/v1"
+	// ordersURLVar creates an order. The old v1 /profile/orders is gone (404);
+	// order creation moved to v2, authenticated with the v1-issued JWT as a
+	// Bearer token.
+	ordersURLVar = "https://api.warframe.market/v2/order"
 	// publicOrdersURLVar lists all public buy/sell orders for an item slug.
 	publicOrdersURLVar = "https://api.warframe.market/v2/orders/item/%s"
 )
